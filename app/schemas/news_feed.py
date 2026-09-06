@@ -10,6 +10,8 @@ class NewsArticleResponse(BaseModel):
     id: int
     title: str
     summary: str
+    korean_summary: str | None
+    category: str
     source: str
     source_url: str
     published_at: datetime
@@ -23,3 +25,4 @@ class NewsRefreshResult(BaseModel):
     collected_count: int
     stored_count: int
     duplicate_count: int
+    summarized_count: int = 0

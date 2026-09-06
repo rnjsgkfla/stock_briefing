@@ -38,12 +38,6 @@
             </svg>
             관심 종목
           </a>
-          <a class="nav-item" href="#analysis">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 19V9m5 10V5m5 14v-7m5 7V3" />
-            </svg>
-            뉴스 분석
-          </a>
         </nav>
 
         <div class="sidebar-note">
@@ -233,54 +227,6 @@
               <strong>아직 수집된 뉴스가 없습니다.</strong>
               <p>뉴스 수집 버튼을 눌러 관심 종목의 최신 이슈를 불러오세요.</p>
             </div>
-          </div>
-        </section>
-
-        <section id="analysis" class="analysis-section">
-          <div class="section-intro">
-            <span class="eyebrow">LIVE API DEMO</span>
-            <h2>뉴스 분석 테스트</h2>
-            <p>
-              공개 뉴스만 입력하세요. 연결된 AI provider를 통해 사실·해석·불확실성을
-              분리한 구조화 분석을 확인할 수 있습니다.
-            </p>
-          </div>
-
-          <div class="analysis-grid">
-            <form id="analysis-form" class="panel analysis-form">
-              <label>
-                기사 제목
-                <input
-                  id="news-title"
-                  name="title"
-                  value="반도체 기업, 신규 데이터센터 제품 공개"
-                  minlength="3"
-                  required
-                />
-              </label>
-              <label>
-                후보 종목
-                <input id="news-symbols" name="symbols" value="NVDA, AMD" />
-              </label>
-              <label>
-                기사 내용
-                <textarea id="news-content" name="content" minlength="20" required>미국 반도체 기업이 신규 데이터센터 제품과 하반기 공급 계획을 공개했습니다. 회사는 주요 클라우드 사업자와 협력 범위를 확대할 예정이라고 밝혔습니다.</textarea>
-              </label>
-              <button id="analyze-button" class="primary-button" type="submit">
-                <span>AI 분석 실행</span>
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m9 18 6-6-6-6" />
-                </svg>
-              </button>
-            </form>
-
-            <article id="analysis-result" class="panel result-panel" aria-live="polite">
-              <div class="empty-result">
-                <span class="result-icon" aria-hidden="true">AI</span>
-                <h3>분석 결과가 여기에 표시됩니다</h3>
-                <p>왼쪽의 샘플 기사를 분석해 백엔드 연결을 확인해보세요.</p>
-              </div>
-            </article>
           </div>
         </section>
 

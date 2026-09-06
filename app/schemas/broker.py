@@ -17,3 +17,10 @@ class MarketQuote(BaseModel):
     currency: str
     timestamp: str | None = None
     change_percent: float | None = None
+
+
+class StockMetadata(BaseModel):
+    symbol: str
+    name: str
+    market: str
+    currency: str

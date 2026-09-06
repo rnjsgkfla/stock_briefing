@@ -42,6 +42,34 @@ async def test_toss_client_reuses_token_and_maps_accounts_and_prices() -> None:
                     ]
                 },
             )
+        if request.url.path == "/api/v1/stocks":
+            assert request.url.params["symbols"] == "NFLX"
+            return httpx.Response(
+                200,
+                json={
+                    "result": [
+                        {
+                            "symbol": "NFLX",
+                            "name": "Netflix",
+                            "market": "NASDAQ",
+                            "currency": "USD",
+                        }
+                    ]
+                },
+            )
+        if request.url.path == "/api/v1/exchange-rate":
+            assert request.url.params["baseCurrency"] == "USD"
+            assert request.url.params["quoteCurrency"] == "KRW"
+            return httpx.Response(
+                200,
+                json={
+                    "result": {
+                        "rate": "1353.1",
+                        "midRate": "1352.6",
+                        "validFrom": "2026-09-07T01:09:58+09:00",
+                    }
+                },
+            )
         if request.url.path == "/api/v1/candles":
             previous_close = "70000" if request.url.params["symbol"] == "005930" else "200"
             return httpx.Response(
@@ -66,6 +94,8 @@ async def test_toss_client_reuses_token_and_maps_accounts_and_prices() -> None:
 
     accounts = await client.get_accounts()
     quotes = await client.get_prices(["005930", "AAPL"])
+    stock = await client.get_stock("NFLX")
+    exchange_rate, exchange_rate_as_of = await client.get_exchange_rate()
 
     assert token_requests == 1
     assert accounts[0].account_seq == "1234"
@@ -73,3 +103,7 @@ async def test_toss_client_reuses_token_and_maps_accounts_and_prices() -> None:
     assert quotes["005930"].change_percent == 2.86
     assert quotes["AAPL"].currency == "USD"
     assert quotes["AAPL"].change_percent == 5.25
+    assert stock is not None
+    assert stock.name == "Netflix"
+    assert exchange_rate == 1352.6
+    assert exchange_rate_as_of == "2026-09-07T01:09:58+09:00"

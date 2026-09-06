@@ -6,6 +6,7 @@ from app.db.bootstrap import DEMO_USER_ID
 from app.db.models import NewsArticle, Stock, WatchlistItem
 from app.integrations.news_collector import AlphaVantageNewsCollector, MockNewsCollector
 from app.schemas.news_feed import NewsRefreshResult
+from app.services.news_enrichment import categorize_news, enrich_news_articles
 
 
 def get_news_collector():
@@ -48,6 +49,7 @@ async def refresh_news_feed(session: AsyncSession) -> NewsRefreshResult:
                 external_id=item.external_id,
                 title=item.title,
                 summary=item.summary,
+                category=categorize_news(item.title, item.summary),
                 source=item.source,
                 source_url=item.source_url,
                 published_at=item.published_at,
@@ -58,10 +60,36 @@ async def refresh_news_feed(session: AsyncSession) -> NewsRefreshResult:
             for item in new_items
         ]
     )
+    await session.flush()
+    provider_articles = list(
+        await session.scalars(
+            select(NewsArticle)
+            .where(NewsArticle.provider == collector.provider)
+            .order_by(NewsArticle.published_at.desc())
+            .limit(200)
+        )
+    )
+    for article in provider_articles:
+        if "FOREX:USD" in article.symbols:
+            article.category = "환율"
+    pending_result = await session.scalars(
+        select(NewsArticle)
+        .where(
+            NewsArticle.provider == collector.provider,
+            NewsArticle.korean_summary.is_(None),
+        )
+        .order_by(NewsArticle.published_at.desc())
+        .limit(20)
+    )
+    try:
+        summarized_count = await enrich_news_articles(list(pending_result))
+    except RuntimeError:
+        summarized_count = 0
     await session.commit()
     return NewsRefreshResult(
         provider=collector.provider,
         collected_count=len(collected),
         stored_count=len(new_items),
         duplicate_count=len(collected) - len(new_items),
+        summarized_count=summarized_count,
     )

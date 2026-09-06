@@ -52,6 +52,8 @@ class NewsArticle(TimestampMixin, Base):
     external_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     title: Mapped[str] = mapped_column(String(500))
     summary: Mapped[str] = mapped_column(Text)
+    korean_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    category: Mapped[str] = mapped_column(String(40), default="기타")
     source: Mapped[str] = mapped_column(String(120))
     source_url: Mapped[str] = mapped_column(String(2_000))
     published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

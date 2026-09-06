@@ -24,3 +24,13 @@ class NewsAnalysisResult(BaseModel):
     interpretation: str
     uncertainties: list[str]
     provider: Literal["mock", "gemini"]
+
+
+class NewsEnrichmentItem(BaseModel):
+    index: int
+    korean_summary: str = Field(min_length=20, max_length=800)
+    category: Literal["금리", "환율", "반도체", "실적", "전쟁·지정학", "기업", "기타"]
+
+
+class NewsEnrichmentBatch(BaseModel):
+    items: list[NewsEnrichmentItem]

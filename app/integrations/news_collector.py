@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -92,18 +93,40 @@ class AlphaVantageNewsCollector:
         self._transport = transport
 
     async def fetch(self, symbols: list[str]) -> list[CollectedNews]:
-        params = {
+        base_params = {
             "function": "NEWS_SENTIMENT",
             "sort": "LATEST",
-            "limit": "50",
+            "limit": "25",
             "apikey": self._api_key,
         }
         us_symbols = [symbol for symbol in symbols if not symbol.isdigit()]
+        requests = []
         if us_symbols:
-            params["tickers"] = ",".join(us_symbols[:5])
+            requests.append({**base_params, "tickers": ",".join(us_symbols[:5])})
         else:
-            params["topics"] = "financial_markets"
+            requests.append({**base_params, "topics": "financial_markets"})
+        requests.append(
+            {**base_params, "topics": "economy_monetary,financial_markets"}
+        )
+        requests.append({**base_params, "tickers": "FOREX:USD"})
 
+        results = await asyncio.gather(
+            *(self._request(params) for params in requests),
+            return_exceptions=True,
+        )
+        payloads = [result for result in results if isinstance(result, dict)]
+        if not payloads:
+            error = next(result for result in results if isinstance(result, Exception))
+            raise RuntimeError("Alpha Vantage 뉴스 수집에 실패했습니다.") from error
+
+        articles: dict[str, CollectedNews] = {}
+        for payload in payloads:
+            for item in payload.get("feed", []):
+                article = self._parse_item(item)
+                articles[article.external_id] = article
+        return list(articles.values())
+
+    async def _request(self, params: dict[str, str]) -> dict:
         try:
             async with httpx.AsyncClient(timeout=15, transport=self._transport) as client:
                 response = await client.get("https://www.alphavantage.co/query", params=params)
@@ -115,8 +138,7 @@ class AlphaVantageNewsCollector:
         error = payload.get("Error Message") or payload.get("Note") or payload.get("Information")
         if error:
             raise RuntimeError(f"Alpha Vantage 뉴스 수집 실패: {error}")
-
-        return [self._parse_item(item) for item in payload.get("feed", [])]
+        return payload
 
     def _parse_item(self, item: dict) -> CollectedNews:
         source_url = item["url"]

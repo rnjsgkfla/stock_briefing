@@ -11,8 +11,8 @@ from app.db.models import Stock, WatchlistItem
 from app.db.session import get_db_session
 from app.schemas.broker import MarketQuote
 from app.schemas.watchlist import WatchlistCreate, WatchlistStock
-from app.services.broker import get_market_quotes
-from app.services.market_data import STOCK_CATALOG, get_mock_quote, resolve_stock_symbol
+from app.services.broker import get_market_quotes, get_stock_metadata
+from app.services.market_data import MOCK_QUOTES, STOCK_CATALOG, resolve_stock_symbol
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
@@ -37,7 +37,7 @@ async def _get_quotes_or_503(symbols: list[str]) -> dict[str, MarketQuote]:
 
 
 def _to_response(item: WatchlistItem, quote: MarketQuote) -> WatchlistStock:
-    _, _, news_count = get_mock_quote(item.stock.symbol)
+    news_count = MOCK_QUOTES.get(item.stock.symbol, (0, 0, 0))[2]
     display_price = (
         f"₩{quote.current_price:,.0f}"
         if quote.currency == "KRW"
@@ -77,7 +77,13 @@ async def add_watchlist_stock(
     session: DatabaseSession,
 ) -> WatchlistStock:
     symbol = resolve_stock_symbol(payload.symbol)
-    metadata = STOCK_CATALOG.get(symbol)
+    try:
+        metadata = await get_stock_metadata(symbol)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
     if metadata is None:
         supported = ", ".join(sorted(STOCK_CATALOG))
         raise HTTPException(
@@ -89,7 +95,12 @@ async def add_watchlist_stock(
 
     stock = await session.scalar(select(Stock).where(Stock.symbol == symbol))
     if stock is None:
-        stock = Stock(symbol=symbol, **metadata)
+        stock = Stock(
+            symbol=metadata.symbol,
+            name=metadata.name,
+            market=metadata.market,
+            currency=metadata.currency,
+        )
         session.add(stock)
         await session.flush()
 

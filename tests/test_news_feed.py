@@ -20,6 +20,7 @@ async def test_refresh_news_stores_and_deduplicates_articles() -> None:
         "collected_count": 3,
         "stored_count": 3,
         "duplicate_count": 0,
+        "summarized_count": 3,
     }
     assert second.status_code == 200
     assert second.json()["stored_count"] == 0
@@ -27,6 +28,8 @@ async def test_refresh_news_stores_and_deduplicates_articles() -> None:
     assert latest.status_code == 200
     assert len(latest.json()) == 3
     assert latest.json()[0]["provider"] == "mock"
+    assert latest.json()[0]["korean_summary"]
+    assert latest.json()[0]["category"]
 
 
 async def test_latest_news_validates_limit() -> None:
@@ -40,8 +43,13 @@ async def test_latest_news_validates_limit() -> None:
 
 
 async def test_alpha_vantage_excludes_korean_codes_from_ticker_filter() -> None:
+    requested_filters: list[str] = []
+
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.params["tickers"] == "AMD,NVDA"
+        if "tickers" in request.url.params:
+            requested_filters.append(request.url.params["tickers"])
+        else:
+            requested_filters.append(request.url.params["topics"])
         return httpx.Response(
             200,
             json={
@@ -68,3 +76,8 @@ async def test_alpha_vantage_excludes_korean_codes_from_ticker_filter() -> None:
     assert len(articles) == 1
     assert articles[0].provider == "alpha_vantage"
     assert articles[0].symbols == ["NVDA"]
+    assert requested_filters == [
+        "AMD,NVDA",
+        "economy_monetary,financial_markets",
+        "FOREX:USD",
+    ]

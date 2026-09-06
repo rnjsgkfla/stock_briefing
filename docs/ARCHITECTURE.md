@@ -10,12 +10,12 @@ Morning Bell은 한국·미국 주식 투자자가 아침에 밤사이 미국 �
 ```text
 Browser
   ├─ GET /api/v1/dashboard  ──> MarketDataService (sample adapter)
-  ├─ CRUD /api/v1/watchlist ──> SQLAlchemy ──> SQLite / PostgreSQL
-  │                                └──────────> Mock / Toss Invest prices
+  ├─ CRUD /api/v1/watchlist ──> Toss Invest stock info + prices ─> DB
   ├─ GET /api/v1/broker/accounts ─> Toss Invest OAuth ─> account sequence
-  ├─ POST /api/v1/news/refresh ─> Mock / Alpha Vantage ─> deduplicate ─> DB
-  ├─ GET /api/v1/news/latest ──> stored overnight news
-  └─ POST /api/v1/news/analyze ─> NewsAnalysisService ─> Mock / Gemini
+  ├─ POST /api/v1/news/refresh ─> Alpha Vantage ─> deduplicate
+  │                                      └───────> Gemini Korean summary/category ─> DB
+  ├─ GET /api/v1/news/latest ──> categorized overnight news
+  └─ GET /api/v1/dashboard ────> Toss prices/FX + FRED DGS10 + stored news
 
 Celery Beat (07:10 KST) ──> Celery Worker ──> news collection
 Celery Beat (07:30 KST) ──> Celery Worker ──> briefing pipeline (next phase)

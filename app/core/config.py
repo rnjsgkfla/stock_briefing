@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     ai_provider: Literal["mock", "gemini"] = "mock"
     gemini_api_key: SecretStr | None = None
-    gemini_model: str = "gemini-3.7-flash"
+    gemini_model: str = "gemini-3.5-flash-lite"
 
     news_provider: Literal["mock", "alpha_vantage"] = "mock"
     alpha_vantage_api_key: SecretStr | None = None

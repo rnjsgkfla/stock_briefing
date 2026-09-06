@@ -1,6 +1,3 @@
-const analysisForm = document.querySelector("#analysis-form");
-const resultPanel = document.querySelector("#analysis-result");
-const analyzeButton = document.querySelector("#analyze-button");
 const apiStatus = document.querySelector("#api-status");
 const providerNote = document.querySelector("#provider-note");
 const todayLabel = document.querySelector("#today-label");
@@ -47,36 +44,7 @@ const formatList = (items) => {
   return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
 };
 
-const directionLabel = {
-  positive: "긍정 가능성",
-  neutral: "중립",
-  negative: "부정 가능성",
-  mixed: "혼재",
-};
-
 const importanceLabel = { high: "중요", medium: "보통", low: "낮음" };
-
-const renderResult = (data) => {
-  const symbols = data.related_symbols.length
-    ? data.related_symbols.map((symbol) => escapeHtml(symbol)).join(" · ")
-    : "관련 종목 없음";
-
-  resultPanel.innerHTML = `
-    <div class="result-header">
-      <h3>분석 완료</h3>
-      <span class="provider-badge">${escapeHtml(data.provider)} provider</span>
-    </div>
-    <p class="result-summary">${escapeHtml(data.summary)}</p>
-    <div class="result-meta">
-      <span>${symbols}</span>
-      <span>${escapeHtml(directionLabel[data.impact_direction] ?? data.impact_direction)}</span>
-      <span>${escapeHtml(importanceLabel[data.importance] ?? data.importance)}</span>
-    </div>
-    <div class="result-block"><strong>확인된 사실</strong>${formatList(data.facts)}</div>
-    <div class="result-block"><strong>해석</strong><p>${escapeHtml(data.interpretation)}</p></div>
-    <div class="result-block"><strong>불확실성</strong>${formatList(data.uncertainties)}</div>
-  `;
-};
 
 const renderDashboard = (data) => {
   document.querySelector("#market-summary").textContent = data.summary;
@@ -235,9 +203,7 @@ const renderNewsFeed = (items) => {
     return;
   }
 
-  newsFeedList.innerHTML = items
-    .map(
-      (item) => `
+  const renderNewsCard = (item) => `
         <article class="news-card ${item.provider === "mock" ? "sample" : "actual"}">
           <div class="news-card-meta">
             <span>${escapeHtml(item.source)} · ${item.provider === "mock" ? "샘플" : "실제 뉴스"}</span>
@@ -246,7 +212,7 @@ const renderNewsFeed = (items) => {
           <button class="news-card-title" type="button" data-news-id="${item.id}">
             ${escapeHtml(item.title)}
           </button>
-          <p>${escapeHtml(item.summary)}</p>
+          <p>${escapeHtml(item.korean_summary ?? item.summary)}</p>
           <div class="news-card-footer">
             <div class="symbol-list">
               ${item.symbols.map((symbol) => `<span>${escapeHtml(symbol)}</span>`).join("")}
@@ -256,6 +222,20 @@ const renderNewsFeed = (items) => {
             </span>
           </div>
         </article>
+      `;
+  const categories = [...new Set(items.map((item) => item.category || "기타"))];
+  newsFeedList.innerHTML = categories
+    .map(
+      (category) => `
+        <section class="news-category-group">
+          <div class="news-category-title">
+            <h3>${escapeHtml(category)}</h3>
+            <span>${items.filter((item) => item.category === category).length}건</span>
+          </div>
+          <div class="news-category-grid">
+            ${items.filter((item) => item.category === category).map(renderNewsCard).join("")}
+          </div>
+        </section>
       `,
     )
     .join("");
@@ -268,7 +248,7 @@ const openNewsDetail = (item) => {
       <time datetime="${escapeHtml(item.published_at)}">${formatPublishedAt(item.published_at)}</time>
     </div>
     <h3>${escapeHtml(item.title)}</h3>
-    <p class="news-detail-summary">${escapeHtml(item.summary)}</p>
+    <p class="news-detail-summary">${escapeHtml(item.korean_summary ?? item.summary)}</p>
     <div class="news-detail-section">
       <strong>관련 종목</strong>
       <div class="symbol-list">
@@ -277,7 +257,7 @@ const openNewsDetail = (item) => {
     </div>
     <div class="news-detail-section">
       <strong>제공 데이터</strong>
-      <p>${escapeHtml(item.sentiment ?? "감성 정보 없음")} · ${escapeHtml(item.provider)}</p>
+      <p>${escapeHtml(item.category)} · ${escapeHtml(item.sentiment ?? "감성 정보 없음")} · ${escapeHtml(item.provider)}</p>
     </div>
     <a class="news-source-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener noreferrer">
       원문 기사 보기
@@ -288,7 +268,7 @@ const openNewsDetail = (item) => {
 
 const loadNewsFeed = async () => {
   try {
-    renderNewsFeed(await fetchJson("/api/v1/news/latest?limit=6"));
+    renderNewsFeed(await fetchJson("/api/v1/news/latest?limit=20"));
   } catch (error) {
     newsFeedMessage.textContent = error.message;
     newsFeedMessage.classList.add("error");
@@ -361,10 +341,11 @@ refreshNewsButton.addEventListener("click", async () => {
     if (result.stored_count) {
       newsFeedMessage.textContent =
         `${result.provider} 실제 뉴스 ${result.collected_count}건 중 ` +
-        `${result.stored_count}건을 새로 저장했습니다.`;
+        `${result.stored_count}건을 저장하고 ${result.summarized_count}건을 한국어로 요약했습니다.`;
     } else if (result.collected_count) {
       newsFeedMessage.textContent =
-        `실제 뉴스 ${result.collected_count}건을 확인했지만 모두 이미 저장된 기사입니다.`;
+        `실제 뉴스 ${result.collected_count}건은 모두 저장되어 있으며 ` +
+        `${result.summarized_count}건을 추가로 한국어 요약했습니다.`;
     } else {
       newsFeedMessage.textContent =
         "Alpha Vantage가 현재 관심 종목의 실제 뉴스를 반환하지 않았습니다.";
@@ -391,40 +372,6 @@ closeNewsDetailButton.addEventListener("click", () => newsDetailDialog.close());
 
 newsDetailDialog.addEventListener("click", (event) => {
   if (event.target === newsDetailDialog) newsDetailDialog.close();
-});
-
-analysisForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  analyzeButton.disabled = true;
-  analyzeButton.querySelector("span").textContent = "분석 중…";
-
-  const symbols = document
-    .querySelector("#news-symbols")
-    .value.split(",")
-    .map((symbol) => symbol.trim())
-    .filter(Boolean);
-
-  try {
-    const data = await fetchJson("/api/v1/news/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: document.querySelector("#news-title").value,
-        content: document.querySelector("#news-content").value,
-        candidate_symbols: symbols,
-      }),
-    });
-    renderResult(data);
-  } catch (error) {
-    resultPanel.innerHTML = `
-      <div class="error-message">
-        <div><strong>분석하지 못했습니다.</strong><br />${escapeHtml(error.message)}</div>
-      </div>
-    `;
-  } finally {
-    analyzeButton.disabled = false;
-    analyzeButton.querySelector("span").textContent = "AI 분석 실행";
-  }
 });
 
 todayLabel.textContent = new Intl.DateTimeFormat("ko-KR", {

@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from app.schemas.broker import BrokerAccount, MarketQuote
+from app.schemas.broker import BrokerAccount, MarketQuote, StockMetadata
 
 
 class TossInvestError(RuntimeError):
@@ -149,6 +149,38 @@ class TossInvestClient:
             if not isinstance(change, Exception):
                 quotes[symbol] = quotes[symbol].model_copy(update={"change_percent": change})
         return quotes
+
+    async def get_stock(self, symbol: str) -> StockMetadata | None:
+        payload = await self._send(
+            "GET",
+            "/api/v1/stocks",
+            params={"symbols": symbol},
+        )
+        result = payload.get("result", [])
+        if isinstance(result, dict):
+            result = result.get("stocks", [result] if result.get("symbol") else [])
+        if not result:
+            return None
+
+        item = result[0]
+        return StockMetadata(
+            symbol=str(item.get("symbol", symbol)).upper(),
+            name=str(item.get("name") or item.get("stockName") or symbol),
+            market=str(item.get("market") or item.get("exchange") or "UNKNOWN"),
+            currency=str(item.get("currency") or ("KRW" if symbol.isdigit() else "USD")),
+        )
+
+    async def get_exchange_rate(self, date_time: str | None = None) -> tuple[float, str]:
+        params = {"baseCurrency": "USD", "quoteCurrency": "KRW"}
+        if date_time:
+            params["dateTime"] = date_time
+        payload = await self._send("GET", "/api/v1/exchange-rate", params=params)
+        result = payload.get("result", {})
+        rate = result.get("midRate") or result.get("rate")
+        as_of = result.get("validFrom") or date_time
+        if rate is None or as_of is None:
+            raise TossInvestError("토스증권 원·달러 환율 값이 응답에 없습니다.")
+        return float(rate), str(as_of)
 
     async def _get_daily_change(self, symbol: str, current_price: float) -> float | None:
         payload = await self._send(

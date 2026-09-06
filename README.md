@@ -15,7 +15,7 @@
 - 시장/포트폴리오 브리핑 API와 프론트엔드 동적 렌더링
 - 미국장·국장 상태, KOSPI/KOSDAQ 지수 및 국장·미장 분리 포트폴리오
 - 뉴스·지수·관련 종목 근거를 펼쳐보는 오늘의 포커스 상세 보기
-- 공개 뉴스의 사실·해석·불확실성을 분리하는 Mock/Gemini 분석
+- Gemini 기반 실제 뉴스 카테고리 분류와 한국어 일괄 요약
 - 관심 종목 기반 뉴스 수집, 중복 제거, 영속 저장 및 최신 이슈 피드
 - 실제 뉴스와 샘플 분리, 기사 상세 모달 및 원문 출처 링크
 - 토스증권 OAuth 토큰 캐시, 계좌 목록 조회 및 관심 종목 현재가 조회
@@ -24,11 +24,11 @@
 
 ## 데이터 출처 현황
 
-- 시장 지표와 포트폴리오 영향: `MarketDataService`의 샘플 데이터
+- 미국 10년물 금리: FRED `DGS10`, 원·달러 환율: 토스증권 Open API
+- 포트폴리오 구성과 KOSPI/KOSDAQ 카드: 현재 샘플 데이터
 - 관심 종목 가격: 기본 샘플 데이터, 선택적으로 토스증권 Open API
 - 뉴스 피드: 기본 Mock 수집기, 선택적으로 Alpha Vantage `NEWS_SENTIMENT`
-- 뉴스 분석: 사용자가 화면에 입력한 제목과 본문을 `/api/v1/news/analyze`로 전달
-- AI 처리: 기본은 Mock 응답이며, 설정 시 Gemini가 입력된 공개 뉴스를 구조화 분석
+- AI 처리: 설정 시 Gemini가 수집된 실제 뉴스를 카테고리별 한국어로 요약
 - Celery 아침 배치: 오전 7시 10분 뉴스 수집, 오전 7시 30분 브리핑 생성 스케줄
 
 기본 설정의 숫자와 뉴스는 데모용 샘플입니다. `NEWS_PROVIDER=alpha_vantage`를 설정하면
@@ -55,9 +55,9 @@ uvicorn app.main:app --reload
 - API 문서: <http://localhost:8000/docs>
 - 상태 확인: <http://localhost:8000/api/v1/health>
 
-최초 실행 시 데모 사용자와 `TSLA`, `AMD` 관심 종목이 생성됩니다. 현재 등록 가능한 종목은
-미국 주요 기술주와 `삼성전자`, `SK하이닉스`, `NAVER`, `카카오`입니다. 국내 종목은 이름이나
-종목 코드(`005930`, `000660`, `035420`, `035720`)로 추가할 수 있습니다.
+최초 실행 시 데모 사용자와 `TSLA`, `AMD` 관심 종목이 생성됩니다. 토스증권 provider에서는
+토스증권이 조회할 수 있는 국내 종목 코드와 미국 티커를 추가할 수 있으며, 등록 전에 종목
+정보와 현재가를 실제 API로 검증합니다. 대표 국내 종목은 이름으로도 입력할 수 있습니다.
 
 ## 주요 API
 
@@ -88,7 +88,7 @@ Google AI Studio에서 키를 발급한 뒤 `.env`를 수정합니다.
 ```dotenv
 AI_PROVIDER=gemini
 GEMINI_API_KEY=your-key
-GEMINI_MODEL=gemini-3.7-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 무료 Gemini API에는 개인정보나 금융정보를 전달하지 않습니다. 보유 수량, 평균단가,
