@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+celerybeat-schedule*
+stock_briefing.db
+stock_briefing.db-*
+.DS_Store

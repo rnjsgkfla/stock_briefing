@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="한국·미국 보유 종목과 밤사이 미국 시장 영향을 요약하는 AI 아침 브리핑"
+    />
+    <title>Morning Bell — AI 주식 브리핑</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="/" aria-label="Morning Bell 홈">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img">
+              <path d="M5 16V9.5a7 7 0 0 1 14 0V16l2 2H3l2-2Z" />
+              <path d="M9.5 21h5" />
+            </svg>
+          </span>
+          <span>Morning Bell</span>
+        </a>
+
+        <nav class="navigation" aria-label="주 메뉴">
+          <a class="nav-item active" href="#overview">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" />
+            </svg>
+            오늘의 브리핑
+          </a>
+          <a class="nav-item" href="#watchlist">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z" />
+            </svg>
+            관심 종목
+          </a>
+          <a class="nav-item" href="#analysis">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 19V9m5 10V5m5 14v-7m5 7V3" />
+            </svg>
+            뉴스 분석
+          </a>
+        </nav>
+
+        <div class="sidebar-note">
+          <span class="eyebrow">개발 모드</span>
+          <strong>Mock AI 활성화</strong>
+          <p>API 키 없이 전체 흐름을 확인하고 있습니다.</p>
+          <span id="api-status" class="status-dot">API 확인 중</span>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="mobile-brand">Morning Bell</p>
+            <p id="today-label" class="date-label"></p>
+          </div>
+          <div class="topbar-actions">
+            <span class="market-badge">
+              <span></span>
+              미국장 마감
+            </span>
+            <button class="avatar" type="button" aria-label="사용자 메뉴">H</button>
+          </div>
+        </header>
+
+        <section id="overview" class="hero">
+          <div>
+            <span class="eyebrow">MORNING BRIEF · SAMPLE DATA</span>
+            <h1>좋은 아침이에요.<br />밤사이 시장을 정리했어요.</h1>
+            <p id="market-summary" class="hero-copy">
+              기술주 중심의 반등이 나타났지만 금리 불확실성은 남아 있습니다.
+              오늘은 반도체 종목의 변동성을 먼저 확인하세요.
+            </p>
+          </div>
+          <div class="brief-time">
+            <span>브리핑 생성</span>
+            <strong>07:30</strong>
+            <small>Asia/Seoul</small>
+          </div>
+        </section>
+
+        <section class="market-grid" aria-label="주요 시장 지표">
+          <article class="market-card" data-market-symbol="IXIC">
+            <div class="card-heading">
+              <span data-role="name">NASDAQ</span>
+              <span class="change positive" data-role="change">+1.24%</span>
+            </div>
+            <strong data-role="value">18,847.28</strong>
+            <div class="sparkline positive-line" aria-hidden="true">
+              <svg viewBox="0 0 200 48" preserveAspectRatio="none">
+                <path d="M0 38 C18 35 22 42 42 31 S75 36 91 22 S121 25 139 16 S172 22 200 7" />
+              </svg>
+            </div>
+          </article>
+          <article class="market-card" data-market-symbol="SPX">
+            <div class="card-heading">
+              <span data-role="name">S&amp;P 500</span>
+              <span class="change positive" data-role="change">+0.62%</span>
+            </div>
+            <strong data-role="value">6,481.42</strong>
+            <div class="sparkline positive-line" aria-hidden="true">
+              <svg viewBox="0 0 200 48" preserveAspectRatio="none">
+                <path d="M0 33 C23 25 29 40 51 31 S81 19 101 24 S127 29 146 18 S177 17 200 9" />
+              </svg>
+            </div>
+          </article>
+          <article class="market-card" data-market-symbol="USDKRW">
+            <div class="card-heading">
+              <span data-role="name">USD / KRW</span>
+              <span class="change negative" data-role="change">−0.31%</span>
+            </div>
+            <strong data-role="value">1,387.20</strong>
+            <div class="sparkline negative-line" aria-hidden="true">
+              <svg viewBox="0 0 200 48" preserveAspectRatio="none">
+                <path d="M0 10 C25 12 31 5 51 16 S78 12 99 25 S126 19 148 34 S178 29 200 41" />
+              </svg>
+            </div>
+          </article>
+        </section>
+
+        <section class="content-grid">
+          <article class="panel portfolio-panel">
+            <div class="panel-title">
+              <div>
+                <span class="eyebrow">PORTFOLIO</span>
+                <h2>내 포트폴리오 영향</h2>
+              </div>
+              <span class="sample-label">샘플</span>
+            </div>
+
+            <div class="impact-summary">
+              <div>
+                <span>밤사이 예상 영향</span>
+                <strong id="portfolio-impact" class="positive">+0.84%</strong>
+              </div>
+              <p>보유 비중이 높은 기술주 반등이 긍정적으로 작용했습니다.</p>
+            </div>
+
+            <div id="holding-list" class="holding-list"></div>
+          </article>
+
+          <article class="panel focus-panel">
+            <div class="panel-title">
+              <div>
+                <span class="eyebrow">TODAY'S FOCUS</span>
+                <h2>오늘 확인할 3가지</h2>
+              </div>
+            </div>
+            <ol id="focus-list" class="focus-list"></ol>
+          </article>
+        </section>
+
+        <section id="watchlist" class="panel watchlist-panel">
+          <div class="panel-title">
+            <div>
+              <span class="eyebrow">WATCHLIST</span>
+              <h2>관심 종목</h2>
+            </div>
+            <form id="watchlist-form" class="watchlist-add-form">
+              <label class="sr-only" for="watchlist-symbol">종목 코드</label>
+              <input
+                id="watchlist-symbol"
+                name="symbol"
+                placeholder="예: NVDA"
+                maxlength="16"
+                autocomplete="off"
+                required
+              />
+              <button class="ghost-button" type="submit">종목 추가</button>
+            </form>
+          </div>
+          <p id="watchlist-message" class="watchlist-message" aria-live="polite"></p>
+          <div class="watchlist-table" role="table" aria-label="관심 종목">
+            <div class="table-row table-head" role="row">
+              <span>종목</span><span>현재가</span><span>전일 대비</span><span>관리</span>
+            </div>
+            <div id="watchlist-rows"></div>
+          </div>
+        </section>
+
+        <section id="analysis" class="analysis-section">
+          <div class="section-intro">
+            <span class="eyebrow">LIVE API DEMO</span>
+            <h2>뉴스 분석 테스트</h2>
+            <p>
+              공개 뉴스만 입력하세요. 현재는 Mock 모드이며, Gemini 키를 연결하면 같은
+              화면에서 실제 구조화 분석을 확인할 수 있습니다.
+            </p>
+          </div>
+
+          <div class="analysis-grid">
+            <form id="analysis-form" class="panel analysis-form">
+              <label>
+                기사 제목
+                <input
+                  id="news-title"
+                  name="title"
+                  value="반도체 기업, 신규 데이터센터 제품 공개"
+                  minlength="3"
+                  required
+                />
+              </label>
+              <label>
+                후보 종목
+                <input id="news-symbols" name="symbols" value="NVDA, AMD" />
+              </label>
+              <label>
+                기사 내용
+                <textarea id="news-content" name="content" minlength="20" required>미국 반도체 기업이 신규 데이터센터 제품과 하반기 공급 계획을 공개했습니다. 회사는 주요 클라우드 사업자와 협력 범위를 확대할 예정이라고 밝혔습니다.</textarea>
+              </label>
+              <button id="analyze-button" class="primary-button" type="submit">
+                <span>AI 분석 실행</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </button>
+            </form>
+
+            <article id="analysis-result" class="panel result-panel" aria-live="polite">
+              <div class="empty-result">
+                <span class="result-icon" aria-hidden="true">AI</span>
+                <h3>분석 결과가 여기에 표시됩니다</h3>
+                <p>왼쪽의 샘플 기사를 분석해 백엔드 연결을 확인해보세요.</p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <footer>
+          <span>Morning Bell · Backend Prototype</span>
+          <span>투자 판단을 위한 정보 제공이며 투자 권유가 아닙니다.</span>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>
