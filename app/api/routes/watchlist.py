@@ -5,28 +5,55 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.bootstrap import DEMO_USER_ID
 from app.db.models import Stock, WatchlistItem
 from app.db.session import get_db_session
+from app.schemas.broker import MarketQuote
 from app.schemas.watchlist import WatchlistCreate, WatchlistStock
-from app.services.market_data import STOCK_CATALOG, get_mock_quote
+from app.services.broker import get_market_quotes
+from app.services.market_data import STOCK_CATALOG, get_mock_quote, resolve_stock_symbol
 
 router = APIRouter()
 DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
 
 
-def _to_response(item: WatchlistItem) -> WatchlistStock:
-    price, change_percent, news_count = get_mock_quote(item.stock.symbol)
+async def _get_quotes_or_503(symbols: list[str]) -> dict[str, MarketQuote]:
+    try:
+        quotes = await get_market_quotes(symbols)
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    missing = [symbol for symbol in symbols if symbol not in quotes]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"현재가를 받지 못한 종목입니다: {', '.join(missing)}",
+        )
+    return quotes
+
+
+def _to_response(item: WatchlistItem, quote: MarketQuote) -> WatchlistStock:
+    _, _, news_count = get_mock_quote(item.stock.symbol)
+    display_price = (
+        f"₩{quote.current_price:,.0f}"
+        if quote.currency == "KRW"
+        else f"${quote.current_price:,.2f}"
+    )
     return WatchlistStock(
         symbol=item.stock.symbol,
         name=item.stock.name,
         market=item.stock.market,
         currency=item.stock.currency,
-        current_price=price,
-        display_price=f"${price:,.2f}",
-        change_percent=change_percent,
+        current_price=quote.current_price,
+        display_price=display_price,
+        change_percent=quote.change_percent,
         news_count=news_count,
         added_at=item.created_at,
+        price_provider=get_settings().market_data_provider,
     )
 
 
@@ -39,7 +66,9 @@ async def list_watchlist(
         .where(WatchlistItem.user_id == DEMO_USER_ID)
         .order_by(WatchlistItem.created_at, WatchlistItem.id)
     )
-    return [_to_response(item) for item in result.unique().all()]
+    items = result.unique().all()
+    quotes = await _get_quotes_or_503([item.stock.symbol for item in items])
+    return [_to_response(item, quotes[item.stock.symbol]) for item in items]
 
 
 @router.post("", response_model=WatchlistStock, status_code=status.HTTP_201_CREATED)
@@ -47,7 +76,8 @@ async def add_watchlist_stock(
     payload: WatchlistCreate,
     session: DatabaseSession,
 ) -> WatchlistStock:
-    metadata = STOCK_CATALOG.get(payload.symbol)
+    symbol = resolve_stock_symbol(payload.symbol)
+    metadata = STOCK_CATALOG.get(symbol)
     if metadata is None:
         supported = ", ".join(sorted(STOCK_CATALOG))
         raise HTTPException(
@@ -55,9 +85,11 @@ async def add_watchlist_stock(
             detail=f"지원하지 않는 종목입니다. 현재 지원: {supported}",
         )
 
-    stock = await session.scalar(select(Stock).where(Stock.symbol == payload.symbol))
+    quotes = await _get_quotes_or_503([symbol])
+
+    stock = await session.scalar(select(Stock).where(Stock.symbol == symbol))
     if stock is None:
-        stock = Stock(symbol=payload.symbol, **metadata)
+        stock = Stock(symbol=symbol, **metadata)
         session.add(stock)
         await session.flush()
 
@@ -74,7 +106,7 @@ async def add_watchlist_stock(
 
     await session.refresh(item)
     item.stock = stock
-    return _to_response(item)
+    return _to_response(item, quotes[symbol])
 
 
 @router.delete("/{symbol}", status_code=status.HTTP_204_NO_CONTENT)

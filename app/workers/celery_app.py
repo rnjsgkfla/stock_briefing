@@ -19,6 +19,10 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     beat_schedule={
+        "refresh-news-feed": {
+            "task": "app.workers.tasks.refresh_news_feed_task",
+            "schedule": crontab(hour=7, minute=10),
+        },
         "create-morning-briefings": {
             "task": "app.workers.tasks.create_morning_briefings",
             "schedule": crontab(hour=7, minute=30),

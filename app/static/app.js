@@ -2,10 +2,18 @@ const analysisForm = document.querySelector("#analysis-form");
 const resultPanel = document.querySelector("#analysis-result");
 const analyzeButton = document.querySelector("#analyze-button");
 const apiStatus = document.querySelector("#api-status");
+const providerNote = document.querySelector("#provider-note");
 const todayLabel = document.querySelector("#today-label");
 const watchlistForm = document.querySelector("#watchlist-form");
 const watchlistRows = document.querySelector("#watchlist-rows");
 const watchlistMessage = document.querySelector("#watchlist-message");
+const newsFeedList = document.querySelector("#news-feed-list");
+const newsFeedMessage = document.querySelector("#news-feed-message");
+const refreshNewsButton = document.querySelector("#refresh-news-button");
+const newsDetailDialog = document.querySelector("#news-detail-dialog");
+const newsDetailContent = document.querySelector("#news-detail-content");
+const closeNewsDetailButton = document.querySelector("#close-news-detail");
+let latestNewsItems = [];
 
 const escapeHtml = (value) => {
   const element = document.createElement("div");
@@ -14,12 +22,16 @@ const escapeHtml = (value) => {
 };
 
 const formatPercent = (value) => {
+  if (value === null || value === undefined) return "—";
   const number = Number(value);
   const sign = number > 0 ? "+" : number < 0 ? "−" : "";
   return `${sign}${Math.abs(number).toFixed(2)}%`;
 };
 
-const directionClass = (value) => (Number(value) >= 0 ? "positive" : "negative");
+const directionClass = (value) => {
+  if (value === null || value === undefined) return "neutral";
+  return Number(value) >= 0 ? "positive" : "negative";
+};
 
 const fetchJson = async (url, options) => {
   const response = await fetch(url, options);
@@ -69,6 +81,16 @@ const renderResult = (data) => {
 const renderDashboard = (data) => {
   document.querySelector("#market-summary").textContent = data.summary;
 
+  document.querySelector("#market-sessions").innerHTML = data.market_sessions
+    .map(
+      (session) => `
+        <span class="market-badge ${session.market === "KR" ? "korea" : ""}">
+          <span></span>${escapeHtml(session.label)} ${escapeHtml(session.status)}
+        </span>
+      `,
+    )
+    .join("");
+
   data.markets.forEach((market) => {
     const card = document.querySelector(`[data-market-symbol="${market.symbol}"]`);
     if (!card) return;
@@ -84,11 +106,11 @@ const renderDashboard = (data) => {
   portfolioImpact.textContent = formatPercent(data.expected_portfolio_impact_percent);
   portfolioImpact.className = directionClass(data.expected_portfolio_impact_percent);
 
-  document.querySelector("#holding-list").innerHTML = data.holdings
-    .map(
-      (holding) => `
+  const holdingRow = (holding) => `
         <div class="holding-row">
-          <span class="ticker ${escapeHtml(holding.color)}">${escapeHtml(holding.symbol.slice(0, 2))}</span>
+          <span class="ticker ${escapeHtml(holding.color)}">
+            ${escapeHtml(holding.market_group === "KR" ? holding.name.slice(0, 1) : holding.symbol.slice(0, 2))}
+          </span>
           <div class="holding-name">
             <strong>${escapeHtml(holding.name)}</strong>
             <span>${escapeHtml(holding.symbol)} · 비중 ${holding.weight_percent}%</span>
@@ -100,8 +122,24 @@ const renderDashboard = (data) => {
             ${formatPercent(holding.change_percent)}
           </strong>
         </div>
-      `,
-    )
+      `;
+
+  const portfolioGroups = [
+    { key: "KR", label: "국장 포트폴리오", market: "KOSPI · KOSDAQ" },
+    { key: "US", label: "미장 포트폴리오", market: "NASDAQ · NYSE" },
+  ];
+  document.querySelector("#holding-groups").innerHTML = portfolioGroups
+    .map((group) => {
+      const holdings = data.holdings.filter((holding) => holding.market_group === group.key);
+      return `
+        <section class="holding-group">
+          <div class="holding-group-title">
+            <strong>${group.label}</strong><span>${group.market}</span>
+          </div>
+          <div class="holding-list">${holdings.map(holdingRow).join("")}</div>
+        </section>
+      `;
+    })
     .join("");
 
   document.querySelector("#focus-list").innerHTML = data.focus_items
@@ -109,7 +147,21 @@ const renderDashboard = (data) => {
       (item, index) => `
         <li>
           <span>${index + 1}</span>
-          <div><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.description)}</p></div>
+          <div class="focus-content">
+            <strong>${escapeHtml(item.title)}</strong>
+            <p>${escapeHtml(item.description)}</p>
+            <details class="focus-detail">
+              <summary>상세 보기</summary>
+              <div class="focus-detail-body">
+                <p>${escapeHtml(item.detail_summary)}</p>
+                <strong>종합 근거</strong>
+                ${formatList(item.evidence)}
+                <div class="symbol-list">
+                  ${item.related_symbols.map((symbol) => `<span>${escapeHtml(symbol)}</span>`).join("")}
+                </div>
+              </div>
+            </details>
+          </div>
         </li>
       `,
     )
@@ -156,10 +208,98 @@ const loadWatchlist = async () => {
   }
 };
 
+const formatPublishedAt = (value) =>
+  new Intl.DateTimeFormat("ko-KR", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+
+const sentimentClass = (value) => {
+  const label = String(value ?? "").toLowerCase();
+  if (label.includes("bullish")) return "positive";
+  if (label.includes("bearish")) return "negative";
+  return "neutral";
+};
+
+const renderNewsFeed = (items) => {
+  latestNewsItems = items;
+  if (!items.length) {
+    newsFeedList.innerHTML = `
+      <div class="empty-news-feed">
+        <strong>아직 수집된 뉴스가 없습니다.</strong>
+        <p>뉴스 수집 버튼을 눌러 관심 종목의 최신 이슈를 불러오세요.</p>
+      </div>
+    `;
+    return;
+  }
+
+  newsFeedList.innerHTML = items
+    .map(
+      (item) => `
+        <article class="news-card ${item.provider === "mock" ? "sample" : "actual"}">
+          <div class="news-card-meta">
+            <span>${escapeHtml(item.source)} · ${item.provider === "mock" ? "샘플" : "실제 뉴스"}</span>
+            <time datetime="${escapeHtml(item.published_at)}">${formatPublishedAt(item.published_at)}</time>
+          </div>
+          <button class="news-card-title" type="button" data-news-id="${item.id}">
+            ${escapeHtml(item.title)}
+          </button>
+          <p>${escapeHtml(item.summary)}</p>
+          <div class="news-card-footer">
+            <div class="symbol-list">
+              ${item.symbols.map((symbol) => `<span>${escapeHtml(symbol)}</span>`).join("")}
+            </div>
+            <span class="sentiment ${sentimentClass(item.sentiment)}">
+              ${escapeHtml(item.sentiment ?? "분석 전")}
+            </span>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
+};
+
+const openNewsDetail = (item) => {
+  newsDetailContent.innerHTML = `
+    <div class="news-detail-meta">
+      <span>${escapeHtml(item.source)}</span>
+      <time datetime="${escapeHtml(item.published_at)}">${formatPublishedAt(item.published_at)}</time>
+    </div>
+    <h3>${escapeHtml(item.title)}</h3>
+    <p class="news-detail-summary">${escapeHtml(item.summary)}</p>
+    <div class="news-detail-section">
+      <strong>관련 종목</strong>
+      <div class="symbol-list">
+        ${item.symbols.length ? item.symbols.map((symbol) => `<span>${escapeHtml(symbol)}</span>`).join("") : "<span>관련 종목 없음</span>"}
+      </div>
+    </div>
+    <div class="news-detail-section">
+      <strong>제공 데이터</strong>
+      <p>${escapeHtml(item.sentiment ?? "감성 정보 없음")} · ${escapeHtml(item.provider)}</p>
+    </div>
+    <a class="news-source-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener noreferrer">
+      원문 기사 보기
+    </a>
+  `;
+  newsDetailDialog.showModal();
+};
+
+const loadNewsFeed = async () => {
+  try {
+    renderNewsFeed(await fetchJson("/api/v1/news/latest?limit=6"));
+  } catch (error) {
+    newsFeedMessage.textContent = error.message;
+    newsFeedMessage.classList.add("error");
+  }
+};
+
 const checkApi = async () => {
   try {
     const health = await fetchJson("/api/v1/health");
     apiStatus.textContent = `${health.ai_provider.toUpperCase()} · 연결됨`;
+    providerNote.textContent = `${health.ai_provider.toUpperCase()} AI 활성화`;
     apiStatus.classList.add("connected");
   } catch {
     apiStatus.textContent = "API 연결 실패";
@@ -210,6 +350,49 @@ watchlistRows.addEventListener("click", async (event) => {
   }
 });
 
+refreshNewsButton.addEventListener("click", async () => {
+  refreshNewsButton.disabled = true;
+  refreshNewsButton.textContent = "수집 중…";
+  newsFeedMessage.textContent = "";
+  newsFeedMessage.classList.remove("error");
+
+  try {
+    const result = await fetchJson("/api/v1/news/refresh", { method: "POST" });
+    if (result.stored_count) {
+      newsFeedMessage.textContent =
+        `${result.provider} 실제 뉴스 ${result.collected_count}건 중 ` +
+        `${result.stored_count}건을 새로 저장했습니다.`;
+    } else if (result.collected_count) {
+      newsFeedMessage.textContent =
+        `실제 뉴스 ${result.collected_count}건을 확인했지만 모두 이미 저장된 기사입니다.`;
+    } else {
+      newsFeedMessage.textContent =
+        "Alpha Vantage가 현재 관심 종목의 실제 뉴스를 반환하지 않았습니다.";
+      newsFeedMessage.classList.add("error");
+    }
+    await loadNewsFeed();
+  } catch (error) {
+    newsFeedMessage.textContent = error.message;
+    newsFeedMessage.classList.add("error");
+  } finally {
+    refreshNewsButton.disabled = false;
+    refreshNewsButton.textContent = "뉴스 수집";
+  }
+});
+
+newsFeedList.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-news-id]");
+  if (!button) return;
+  const item = latestNewsItems.find((news) => news.id === Number(button.dataset.newsId));
+  if (item) openNewsDetail(item);
+});
+
+closeNewsDetailButton.addEventListener("click", () => newsDetailDialog.close());
+
+newsDetailDialog.addEventListener("click", (event) => {
+  if (event.target === newsDetailDialog) newsDetailDialog.close();
+});
+
 analysisForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   analyzeButton.disabled = true;
@@ -251,4 +434,4 @@ todayLabel.textContent = new Intl.DateTimeFormat("ko-KR", {
   weekday: "long",
 }).format(new Date());
 
-Promise.all([checkApi(), loadDashboard(), loadWatchlist()]);
+Promise.all([checkApi(), loadDashboard(), loadWatchlist(), loadNewsFeed()]);

@@ -13,6 +13,13 @@ services:
       AI_PROVIDER: ${AI_PROVIDER:-mock}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.7-flash}
+      NEWS_PROVIDER: ${NEWS_PROVIDER:-mock}
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY:-}
+      MARKET_DATA_PROVIDER: ${MARKET_DATA_PROVIDER:-mock}
+      TOSS_INVEST_BASE_URL: ${TOSS_INVEST_BASE_URL:-https://openapi.tossinvest.com}
+      TOSS_INVEST_CLIENT_ID: ${TOSS_INVEST_CLIENT_ID:-}
+      TOSS_INVEST_CLIENT_SECRET: ${TOSS_INVEST_CLIENT_SECRET:-}
+      TOSS_INVEST_ACCOUNT: ${TOSS_INVEST_ACCOUNT:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -69,4 +76,3 @@ services:
 
 volumes:
   postgres-data:
-

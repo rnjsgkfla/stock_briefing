@@ -216,6 +216,12 @@ button {
   gap: 17px;
 }
 
+.market-sessions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 .market-badge {
   display: flex;
   align-items: center;
@@ -230,6 +236,10 @@ button {
   height: 7px;
   border-radius: 99px;
   background: var(--red);
+}
+
+.market-badge.korea span {
+  background: var(--accent);
 }
 
 .avatar {
@@ -308,7 +318,7 @@ h1 {
 
 .market-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 14px;
 }
 
@@ -364,6 +374,10 @@ h1 {
 
 .negative {
   color: var(--red) !important;
+}
+
+.neutral {
+  color: var(--muted) !important;
 }
 
 .sparkline {
@@ -461,6 +475,37 @@ h1 {
   color: #575c64;
   font-size: 13px;
   line-height: 1.55;
+}
+
+.holding-groups {
+  display: grid;
+  gap: 20px;
+  margin-top: 18px;
+}
+
+.holding-group {
+  min-width: 0;
+}
+
+.holding-group + .holding-group {
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.holding-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.holding-group-title strong {
+  font-size: 12px;
+}
+
+.holding-group-title span {
+  color: var(--muted);
+  font-size: 9px;
 }
 
 .holding-list {
@@ -582,6 +627,56 @@ h1 {
   line-height: 1.5;
 }
 
+.focus-detail {
+  margin-top: 9px;
+}
+
+.focus-detail summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 750;
+  list-style: none;
+}
+
+.focus-detail summary::-webkit-details-marker {
+  display: none;
+}
+
+.focus-detail summary::after {
+  content: " +";
+}
+
+.focus-detail[open] summary::after {
+  content: " −";
+}
+
+.focus-detail-body {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fafafa;
+}
+
+.focus-detail-body > p {
+  margin-top: 0;
+  color: #575c64;
+}
+
+.focus-detail-body > strong {
+  font-size: 10px;
+}
+
+.focus-detail-body ul {
+  margin: 7px 0 10px;
+  padding-left: 17px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
 .watchlist-panel {
   margin-top: 14px;
 }
@@ -696,6 +791,207 @@ h1 {
   color: var(--muted);
   font-size: 12px;
   text-align: center;
+}
+
+.news-feed-panel {
+  margin-top: 14px;
+}
+
+.news-feed-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.empty-news-feed {
+  grid-column: 1 / -1;
+  padding: 42px 20px;
+  border: 1px dashed #d9dbe0;
+  border-radius: 15px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty-news-feed strong {
+  color: #4f545c;
+  font-size: 13px;
+}
+
+.empty-news-feed p {
+  margin: 7px 0 0;
+  font-size: 11px;
+}
+
+.news-card {
+  display: flex;
+  min-height: 205px;
+  flex-direction: column;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fafafa;
+}
+
+.news-card-meta,
+.news-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.news-card-meta {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.news-card-title {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  margin-top: 14px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.news-card-title:hover {
+  color: var(--accent);
+}
+
+.news-card > p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 9px 0 18px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.news-card-footer {
+  margin-top: auto;
+}
+
+.symbol-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.symbol-list span,
+.sentiment {
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.sentiment.positive {
+  background: var(--green-soft);
+}
+
+.sentiment.negative {
+  background: var(--red-soft);
+}
+
+.sentiment.neutral {
+  background: #f0f1f3;
+  color: var(--muted);
+}
+
+.news-detail-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  border: 0;
+  border-radius: 22px;
+  box-shadow: 0 26px 80px rgba(23, 25, 29, 0.22);
+}
+
+.news-detail-dialog::backdrop {
+  background: rgba(23, 25, 29, 0.48);
+  backdrop-filter: blur(3px);
+}
+
+.news-detail-dialog article {
+  padding: 28px;
+}
+
+.news-detail-header,
+.news-detail-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.news-detail-header button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: #f1f2f4;
+  color: var(--muted);
+  font-size: 20px;
+}
+
+.news-detail-meta {
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.news-detail-dialog h3 {
+  margin: 14px 0 0;
+  font-size: 24px;
+  line-height: 1.4;
+}
+
+.news-detail-summary {
+  margin: 17px 0 0;
+  color: #575c64;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.news-detail-section {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.news-detail-section > strong {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 11px;
+}
+
+.news-detail-section > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.news-source-link {
+  display: flex;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 24px;
+  border-radius: 12px;
+  background: var(--surface-dark);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .table-head {
@@ -952,6 +1248,10 @@ footer {
   .analysis-grid {
     grid-template-columns: 1fr;
   }
+
+  .news-feed-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -986,8 +1286,12 @@ footer {
     grid-template-columns: 1fr;
   }
 
-  .market-card:nth-child(n + 3) {
-    display: none;
+  .market-sessions {
+    gap: 8px;
+  }
+
+  .market-badge {
+    font-size: 10px;
   }
 
   .panel {
@@ -1026,6 +1330,10 @@ footer {
   }
 
   .analysis-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .news-feed-list {
     grid-template-columns: 1fr;
   }
 

@@ -3,6 +3,9 @@ import os
 import pytest_asyncio
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
+os.environ["AI_PROVIDER"] = "mock"
+os.environ["NEWS_PROVIDER"] = "mock"
+os.environ["MARKET_DATA_PROVIDER"] = "mock"
 
 from app.db import models  # noqa: E402, F401
 from app.db.base import Base  # noqa: E402

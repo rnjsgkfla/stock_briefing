@@ -1,0 +1,165 @@
+import asyncio
+from collections.abc import Mapping
+from time import monotonic
+from typing import Any
+
+import httpx
+
+from app.schemas.broker import BrokerAccount, MarketQuote
+
+
+class TossInvestError(RuntimeError):
+    pass
+
+
+class TossInvestClient:
+    def __init__(
+        self,
+        base_url: str,
+        client_id: str,
+        client_secret: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._transport = transport
+        self._access_token: str | None = None
+        self._token_expires_at = 0.0
+        self._token_lock = asyncio.Lock()
+
+    async def _get_access_token(self) -> str:
+        if self._access_token and monotonic() < self._token_expires_at:
+            return self._access_token
+
+        async with self._token_lock:
+            if self._access_token and monotonic() < self._token_expires_at:
+                return self._access_token
+
+            payload = await self._send(
+                "POST",
+                "/oauth2/token",
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self._client_id,
+                    "client_secret": self._client_secret,
+                },
+                authenticated=False,
+            )
+            token_payload = payload.get("result", payload)
+            token = token_payload.get("access_token") or token_payload.get("accessToken")
+            if not token:
+                raise TossInvestError("토스증권 액세스 토큰이 응답에 없습니다.")
+
+            expires_in = int(
+                token_payload.get("expires_in") or token_payload.get("expiresIn") or 3600
+            )
+            self._access_token = str(token)
+            self._token_expires_at = monotonic() + max(expires_in - 60, 1)
+            return self._access_token
+
+    async def _send(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, str] | None = None,
+        data: Mapping[str, str] | None = None,
+        headers: Mapping[str, str] | None = None,
+        authenticated: bool = True,
+    ) -> dict[str, Any]:
+        request_headers = dict(headers or {})
+        if authenticated:
+            token = await self._get_access_token()
+            request_headers["Authorization"] = f"Bearer {token}"
+
+        try:
+            async with httpx.AsyncClient(
+                base_url=self._base_url,
+                timeout=15,
+                transport=self._transport,
+            ) as client:
+                response = await client.request(
+                    method,
+                    path,
+                    params=params,
+                    data=data,
+                    headers=request_headers,
+                )
+        except httpx.HTTPError as exc:
+            raise TossInvestError("토스증권 API에 연결하지 못했습니다.") from exc
+
+        if response.is_error:
+            message = "토스증권 API 요청에 실패했습니다."
+            try:
+                error = response.json().get("error", {})
+                message = error.get("message") or message
+            except ValueError:
+                pass
+            raise TossInvestError(f"{message} (HTTP {response.status_code})")
+
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise TossInvestError("토스증권 API 응답이 JSON 형식이 아닙니다.") from exc
+
+    async def get_accounts(self) -> list[BrokerAccount]:
+        payload = await self._send("GET", "/api/v1/accounts")
+        accounts = payload.get("result", [])
+        if isinstance(accounts, dict):
+            accounts = accounts.get("accounts", [])
+        return [
+            BrokerAccount(
+                account_seq=str(account["accountSeq"]),
+                name=account.get("name") or account.get("accountName"),
+            )
+            for account in accounts
+            if account.get("accountSeq") is not None
+        ]
+
+    async def get_prices(self, symbols: list[str]) -> dict[str, MarketQuote]:
+        if not symbols:
+            return {}
+        if len(symbols) > 200:
+            raise ValueError("토스증권 현재가는 한 번에 최대 200종목까지 조회할 수 있습니다.")
+
+        payload = await self._send(
+            "GET",
+            "/api/v1/prices",
+            params={"symbols": ",".join(symbols)},
+        )
+        quotes = {}
+        for item in payload.get("result", []):
+            symbol = str(item["symbol"]).upper()
+            quotes[symbol] = MarketQuote(
+                symbol=symbol,
+                current_price=float(item["lastPrice"]),
+                currency=item["currency"],
+                timestamp=item.get("timestamp"),
+            )
+
+        changes = await asyncio.gather(
+            *(
+                self._get_daily_change(symbol, quote.current_price)
+                for symbol, quote in quotes.items()
+            ),
+            return_exceptions=True,
+        )
+        for symbol, change in zip(quotes, changes, strict=True):
+            if not isinstance(change, Exception):
+                quotes[symbol] = quotes[symbol].model_copy(update={"change_percent": change})
+        return quotes
+
+    async def _get_daily_change(self, symbol: str, current_price: float) -> float | None:
+        payload = await self._send(
+            "GET",
+            "/api/v1/candles",
+            params={"symbol": symbol, "interval": "1d", "count": "2"},
+        )
+        candles = payload.get("result", {}).get("candles", [])
+        if len(candles) < 2:
+            return None
+        previous_close = float(candles[1]["closePrice"])
+        if previous_close == 0:
+            return None
+        return round((current_price - previous_close) / previous_close * 100, 2)

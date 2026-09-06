@@ -11,8 +11,13 @@ Morning Bell은 한국·미국 주식 투자자가 아침에 밤사이 미국 �
 Browser
   ├─ GET /api/v1/dashboard  ──> MarketDataService (sample adapter)
   ├─ CRUD /api/v1/watchlist ──> SQLAlchemy ──> SQLite / PostgreSQL
+  │                                └──────────> Mock / Toss Invest prices
+  ├─ GET /api/v1/broker/accounts ─> Toss Invest OAuth ─> account sequence
+  ├─ POST /api/v1/news/refresh ─> Mock / Alpha Vantage ─> deduplicate ─> DB
+  ├─ GET /api/v1/news/latest ──> stored overnight news
   └─ POST /api/v1/news/analyze ─> NewsAnalysisService ─> Mock / Gemini
 
+Celery Beat (07:10 KST) ──> Celery Worker ──> news collection
 Celery Beat (07:30 KST) ──> Celery Worker ──> briefing pipeline (next phase)
                                  │
                                  └──────────── Redis broker
@@ -25,14 +30,16 @@ Celery Beat (07:30 KST) ──> Celery Worker ──> briefing pipeline (next ph
 - 뉴스의 사실, 해석, 불확실성을 분리해 환각과 투자 조언 위험을 낮춘다.
 - 데모 사용자를 고정해 인증 없이 핵심 CRUD를 보여준다. 실제 배포 전에는 OAuth/JWT 경계를
   추가하고 모든 쿼리를 인증 사용자 ID로 제한해야 한다.
-- 시세와 시장 요약은 현재 미국 종목 중심의 sample adapter다. 뉴스도 자동 수집하지 않고
-  사용자가 입력한 공개 기사만 분석한다. 실제 공급자 연결 시 서비스 인터페이스 안쪽만
-  교체하고 API 응답은 유지한다.
+- 시장 요약은 sample adapter를 사용한다. 관심 종목 현재가는 Mock 또는 토스증권 Open API를
+  선택하며 액세스 토큰은 만료 직전까지 메모리에 캐시한다. 뉴스는 Mock 또는 Alpha Vantage
+  수집기를 선택하고 URL 해시를 외부 ID로 사용해 중복 저장을 막는다.
+- 토스증권 연동은 조회 전용이다. Client Secret과 액세스 토큰을 DB에 저장하거나 Gemini
+  프롬프트로 전달하지 않는다.
 
 ## 다음 경계
 
-1. 미국 시세·뉴스 API와 국내 시세 API adapter, 실패 시 캐시 fallback
-2. 국내외 공식 RSS/API 뉴스 수집, URL 기준 중복 제거, 원문 출처 저장
+1. 시세 공급자 장애 시 최근 정상 가격 캐시 fallback
+2. 국내외 공식 RSS/API 뉴스 수집 범위 확대
 3. 사용자별 브리핑 저장 및 생성 상태 조회
-4. OAuth 로그인과 암호화된 증권사 연동 토큰 저장
+4. OAuth 로그인과 사용자별 인증정보 암호화 저장
 5. OpenTelemetry/Sentry 기반 관측성 및 배포 환경 분리

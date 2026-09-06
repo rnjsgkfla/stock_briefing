@@ -48,8 +48,8 @@
 
         <div class="sidebar-note">
           <span class="eyebrow">개발 모드</span>
-          <strong>Mock AI 활성화</strong>
-          <p>API 키 없이 전체 흐름을 확인하고 있습니다.</p>
+          <strong id="provider-note">Provider 확인 중</strong>
+          <p>연결된 데이터 제공자를 상태 API에서 확인합니다.</p>
           <span id="api-status" class="status-dot">API 확인 중</span>
         </div>
       </aside>
@@ -61,10 +61,10 @@
             <p id="today-label" class="date-label"></p>
           </div>
           <div class="topbar-actions">
-            <span class="market-badge">
-              <span></span>
-              미국장 마감
-            </span>
+            <div id="market-sessions" class="market-sessions" aria-label="시장 상태">
+              <span class="market-badge"><span></span>미국장 확인 중</span>
+              <span class="market-badge korea"><span></span>국장 확인 중</span>
+            </div>
             <button class="avatar" type="button" aria-label="사용자 메뉴">H</button>
           </div>
         </header>
@@ -122,6 +122,30 @@
               </svg>
             </div>
           </article>
+          <article class="market-card" data-market-symbol="KOSPI">
+            <div class="card-heading">
+              <span data-role="name">KOSPI</span>
+              <span class="change positive" data-role="change">+0.71%</span>
+            </div>
+            <strong data-role="value">3,210.01</strong>
+            <div class="sparkline positive-line" aria-hidden="true">
+              <svg viewBox="0 0 200 48" preserveAspectRatio="none">
+                <path d="M0 36 C22 38 31 25 52 30 S83 20 102 23 S132 12 151 18 S180 10 200 6" />
+              </svg>
+            </div>
+          </article>
+          <article class="market-card" data-market-symbol="KOSDAQ">
+            <div class="card-heading">
+              <span data-role="name">KOSDAQ</span>
+              <span class="change negative" data-role="change">−0.18%</span>
+            </div>
+            <strong data-role="value">811.40</strong>
+            <div class="sparkline negative-line" aria-hidden="true">
+              <svg viewBox="0 0 200 48" preserveAspectRatio="none">
+                <path d="M0 17 C24 10 34 21 55 14 S85 25 105 20 S134 30 154 25 S181 34 200 38" />
+              </svg>
+            </div>
+          </article>
         </section>
 
         <section class="content-grid">
@@ -142,7 +166,7 @@
               <p>보유 비중이 높은 기술주 반등이 긍정적으로 작용했습니다.</p>
             </div>
 
-            <div id="holding-list" class="holding-list"></div>
+            <div id="holding-groups" class="holding-groups"></div>
           </article>
 
           <article class="panel focus-panel">
@@ -167,11 +191,20 @@
               <input
                 id="watchlist-symbol"
                 name="symbol"
-                placeholder="예: NVDA"
+                placeholder="NVDA 또는 005930"
                 maxlength="16"
                 autocomplete="off"
+                list="supported-symbols"
                 required
               />
+              <datalist id="supported-symbols">
+                <option value="005930">삼성전자</option>
+                <option value="000660">SK하이닉스</option>
+                <option value="035420">NAVER</option>
+                <option value="035720">카카오</option>
+                <option value="NVDA">NVIDIA</option>
+                <option value="AAPL">Apple</option>
+              </datalist>
               <button class="ghost-button" type="submit">종목 추가</button>
             </form>
           </div>
@@ -184,13 +217,32 @@
           </div>
         </section>
 
+        <section id="news-feed" class="panel news-feed-panel">
+          <div class="panel-title">
+            <div>
+              <span class="eyebrow">OVERNIGHT ISSUES</span>
+              <h2>밤사이 주요 이슈</h2>
+            </div>
+            <button id="refresh-news-button" class="ghost-button" type="button">
+              뉴스 수집
+            </button>
+          </div>
+          <p id="news-feed-message" class="watchlist-message" aria-live="polite"></p>
+          <div id="news-feed-list" class="news-feed-list">
+            <div class="empty-news-feed">
+              <strong>아직 수집된 뉴스가 없습니다.</strong>
+              <p>뉴스 수집 버튼을 눌러 관심 종목의 최신 이슈를 불러오세요.</p>
+            </div>
+          </div>
+        </section>
+
         <section id="analysis" class="analysis-section">
           <div class="section-intro">
             <span class="eyebrow">LIVE API DEMO</span>
             <h2>뉴스 분석 테스트</h2>
             <p>
-              공개 뉴스만 입력하세요. 현재는 Mock 모드이며, Gemini 키를 연결하면 같은
-              화면에서 실제 구조화 분석을 확인할 수 있습니다.
+              공개 뉴스만 입력하세요. 연결된 AI provider를 통해 사실·해석·불확실성을
+              분리한 구조화 분석을 확인할 수 있습니다.
             </p>
           </div>
 
@@ -238,5 +290,15 @@
         </footer>
       </main>
     </div>
+
+    <dialog id="news-detail-dialog" class="news-detail-dialog">
+      <article>
+        <div class="news-detail-header">
+          <span class="eyebrow">ACTUAL NEWS DETAIL</span>
+          <button id="close-news-detail" type="button" aria-label="뉴스 상세 닫기">×</button>
+        </div>
+        <div id="news-detail-content"></div>
+      </article>
+    </dialog>
   </body>
 </html>

@@ -17,6 +17,15 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr | None = None
     gemini_model: str = "gemini-3.7-flash"
 
+    news_provider: Literal["mock", "alpha_vantage"] = "mock"
+    alpha_vantage_api_key: SecretStr | None = None
+
+    market_data_provider: Literal["mock", "toss"] = "mock"
+    toss_invest_base_url: str = "https://openapi.tossinvest.com"
+    toss_invest_client_id: SecretStr | None = None
+    toss_invest_client_secret: SecretStr | None = None
+    toss_invest_account: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

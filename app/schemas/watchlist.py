@@ -19,6 +19,7 @@ class WatchlistStock(BaseModel):
     currency: str
     current_price: float
     display_price: str
-    change_percent: float
+    change_percent: float | None
     news_count: int
     added_at: datetime
+    price_provider: str

@@ -34,3 +34,17 @@ async def test_watchlist_rejects_unsupported_symbol() -> None:
 
     assert response.status_code == 404
     assert "현재 지원" in response.json()["detail"]
+
+
+async def test_watchlist_accepts_korean_stock_code() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        response = await client.post("/api/v1/watchlist", json={"symbol": "삼성전자"})
+
+    assert response.status_code == 201
+    assert response.json()["symbol"] == "005930"
+    assert response.json()["name"] == "삼성전자"
+    assert response.json()["market"] == "KOSPI"
+    assert response.json()["display_price"].startswith("₩")

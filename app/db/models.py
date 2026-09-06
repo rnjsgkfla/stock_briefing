@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -41,3 +43,18 @@ class WatchlistItem(TimestampMixin, Base):
 
     user: Mapped[User] = relationship(back_populates="watchlist_items")
     stock: Mapped[Stock] = relationship(back_populates="watchlist_items", lazy="joined")
+
+
+class NewsArticle(TimestampMixin, Base):
+    __tablename__ = "news_articles"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    external_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(500))
+    summary: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(120))
+    source_url: Mapped[str] = mapped_column(String(2_000))
+    published_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    symbols: Mapped[list[str]] = mapped_column(JSON, default=list)
+    sentiment: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    provider: Mapped[str] = mapped_column(String(40))
