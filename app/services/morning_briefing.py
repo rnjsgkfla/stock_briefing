@@ -26,34 +26,42 @@ def _format_quote(quote: MarketQuote) -> str:
 def _news_reason(
     news: list[NewsArticle],
     category: str,
+    relevance_keywords: tuple[str, ...] = (),
     fallback_keywords: tuple[str, ...] = (),
 ) -> str:
-    article = next(
-        (
-            item
-            for item in news
-            if item.category == category and item.korean_summary
-        ),
-        None,
+    def relevance_score(item: NewsArticle, keywords: tuple[str, ...]) -> int:
+        text = f"{item.title} {item.korean_summary or ''}".lower()
+        return sum(text.count(keyword.lower()) for keyword in keywords)
+
+    candidates = [item for item in news if item.category == category and item.korean_summary]
+    article = (
+        max(candidates, key=lambda item: relevance_score(item, relevance_keywords))
+        if candidates
+        else None
     )
     if article is None and fallback_keywords:
-        article = next(
-            (
-                item
-                for item in news
-                if item.korean_summary
-                and any(keyword in item.korean_summary for keyword in fallback_keywords)
-            ),
-            None,
+        fallback_candidates = [
+            item
+            for item in news
+            if item.korean_summary
+            and any(keyword in item.korean_summary for keyword in fallback_keywords)
+        ]
+        article = (
+            max(
+                fallback_candidates,
+                key=lambda item: relevance_score(item, fallback_keywords),
+            )
+            if fallback_candidates
+            else None
         )
     if article is None:
         return "관련 실제 뉴스의 한국어 요약이 아직 없습니다."
     return f"{article.source}: {article.korean_summary}"
 
 
-def _metric_change(metric: EconomicMetric) -> str:
+def _metric_direction(metric: EconomicMetric) -> str:
     direction = "상승" if metric.value > metric.previous_value else "하락"
-    return f"{metric.previous_value:,.2f} → {metric.value:,.2f} ({direction})"
+    return direction
 
 
 async def build_dashboard_snapshot(session: AsyncSession) -> DashboardSnapshot:
@@ -63,7 +71,7 @@ async def build_dashboard_snapshot(session: AsyncSession) -> DashboardSnapshot:
             select(NewsArticle)
             .where(NewsArticle.provider == get_settings().news_provider)
             .order_by(NewsArticle.published_at.desc())
-            .limit(50)
+            .limit(200)
         )
     )
 
@@ -99,9 +107,8 @@ async def build_dashboard_snapshot(session: AsyncSession) -> DashboardSnapshot:
     )
 
     treasury = metrics.get("treasury")
-    treasury_change_bps = (
-        (treasury.value - treasury.previous_value) * 100 if treasury else None
-    )
+    treasury_direction = _metric_direction(treasury) if treasury else ""
+    treasury_change_bps = (treasury.value - treasury.previous_value) * 100 if treasury else None
     treasury_description = (
         f"미국 10년물 {treasury.value:.2f}% · 전일 대비 {treasury_change_bps:+.1f}bp"
         if treasury
@@ -118,16 +125,34 @@ async def build_dashboard_snapshot(session: AsyncSession) -> DashboardSnapshot:
         FocusItem(
             title="반도체 업종 반등 지속 여부",
             description=semiconductor_description,
-            detail_summary=_news_reason(news, "반도체"),
+            detail_summary=_news_reason(
+                news,
+                "반도체",
+                ("반도체", "semiconductor", "chip", "메모리", "dram", "nand"),
+            ),
             evidence=quote_evidence or ["토스증권 시세를 불러오지 못했습니다."],
             related_symbols=list(semiconductor_quotes) or SEMICONDUCTOR_SYMBOLS,
         ),
         FocusItem(
             title="미국 장기 국채 금리",
             description=treasury_description,
-            detail_summary=_news_reason(news, "금리"),
+            detail_summary=_news_reason(
+                news,
+                "금리",
+                (
+                    f"국채 금리가 {treasury_direction}",
+                    f"채권 금리가 {treasury_direction}",
+                    "10년물",
+                    "treasury",
+                    "yield",
+                ),
+            ),
             evidence=(
-                [f"10년물 금리 {_metric_change(treasury)}%, 기준일 {treasury.as_of}"]
+                [
+                    f"10년물 금리 {treasury.previous_value:.2f}% → "
+                    f"{treasury.value:.2f}% ({_metric_direction(treasury)}), "
+                    f"기준일 {treasury.as_of}"
+                ]
                 if treasury
                 else ["경제지표 제공자에서 최신 금리를 받지 못했습니다."]
             ),
@@ -139,10 +164,14 @@ async def build_dashboard_snapshot(session: AsyncSession) -> DashboardSnapshot:
             detail_summary=_news_reason(
                 news,
                 "환율",
-                ("강달러", "약달러", "달러화", "원화", "환율"),
+                fallback_keywords=("강달러", "약달러", "달러화", "원화", "환율"),
             ),
             evidence=(
-                [f"USD/KRW {_metric_change(usdkrw)}원, 기준일 {usdkrw.as_of}"]
+                [
+                    f"USD/KRW {usdkrw.previous_value:,.2f}원 → "
+                    f"{usdkrw.value:,.2f}원 ({_metric_direction(usdkrw)}), "
+                    f"기준일 {usdkrw.as_of}"
+                ]
                 if usdkrw
                 else ["경제지표 제공자에서 최신 환율을 받지 못했습니다."]
             ),
