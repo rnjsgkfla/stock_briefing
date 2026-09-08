@@ -455,6 +455,17 @@ h1 {
   font-weight: 700;
 }
 
+.portfolio-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ghost-button.compact {
+  padding: 6px 9px;
+  font-size: 10px;
+}
+
 .impact-summary {
   display: grid;
   grid-template-columns: 155px 1fr;
@@ -559,6 +570,21 @@ h1 {
 .holding-name strong,
 .holding-name span {
   display: block;
+}
+
+.holding-name small {
+  display: block;
+  margin-top: 4px;
+  color: #727780;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.empty-holdings {
+  margin: 0;
+  padding: 18px 0 8px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .holding-name strong {

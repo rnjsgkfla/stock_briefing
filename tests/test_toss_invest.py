@@ -22,6 +22,33 @@ async def test_toss_client_reuses_token_and_maps_accounts_and_prices() -> None:
                 200,
                 json={"result": [{"accountSeq": 1234, "accountName": "위탁계좌"}]},
             )
+        if request.url.path == "/api/v1/holdings":
+            assert request.headers["X-Tossinvest-Account"] == "1234"
+            return httpx.Response(
+                200,
+                json={
+                    "result": {
+                        "dailyProfitLoss": {"amount": {"krw": "100000"}, "rate": "0.0141"},
+                        "items": [
+                            {
+                                "symbol": "005930",
+                                "name": "삼성전자",
+                                "marketCountry": "KR",
+                                "currency": "KRW",
+                                "quantity": "100",
+                                "lastPrice": "72000",
+                                "averagePurchasePrice": "65000",
+                                "marketValue": {
+                                    "purchaseAmount": "6500000",
+                                    "amount": "7200000",
+                                },
+                                "profitLoss": {"amount": "700000", "rate": "0.1077"},
+                                "dailyProfitLoss": {"amount": "100000", "rate": "0.0141"},
+                            }
+                        ],
+                    }
+                },
+            )
         if request.url.path == "/api/v1/prices":
             return httpx.Response(
                 200,
@@ -121,6 +148,7 @@ async def test_toss_client_reuses_token_and_maps_accounts_and_prices() -> None:
     )
 
     accounts = await client.get_accounts()
+    portfolio = await client.get_holdings("1234")
     quotes = await client.get_prices(["005930", "AAPL"])
     stock = await client.get_stock("NFLX")
     exchange_rate, exchange_rate_as_of = await client.get_exchange_rate()
@@ -128,6 +156,10 @@ async def test_toss_client_reuses_token_and_maps_accounts_and_prices() -> None:
 
     assert token_requests == 1
     assert accounts[0].account_seq == "1234"
+    assert portfolio.status == "ready"
+    assert portfolio.daily_profit_loss_percent == 1.41
+    assert portfolio.holdings[0].current_price == 72000
+    assert portfolio.holdings[0].profit_loss_percent == 10.77
     assert quotes["005930"].current_price == 72000
     assert quotes["005930"].change_percent == 2.86
     assert quotes["AAPL"].currency == "USD"
@@ -139,3 +171,33 @@ async def test_toss_client_reuses_token_and_maps_accounts_and_prices() -> None:
     assert market_indicators["KOSPI"].current_value == 6954.52
     assert market_indicators["KOSPI"].change_percent == -0.58
     assert market_indicators["KOSDAQ"].change_percent == 0.58
+
+
+@pytest.mark.asyncio
+async def test_toss_client_maps_empty_holdings_as_connected_empty_portfolio() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth2/token":
+            return httpx.Response(200, json={"result": {"accessToken": "test-token"}})
+        assert request.headers["X-Tossinvest-Account"] == "7"
+        return httpx.Response(
+            200,
+            json={
+                "result": {
+                    "dailyProfitLoss": {"amount": {"krw": "0"}, "rate": "0"},
+                    "items": [],
+                }
+            },
+        )
+
+    client = TossInvestClient(
+        base_url="https://example.test",
+        client_id="client-id",
+        client_secret="client-secret",
+        transport=httpx.MockTransport(handler),
+    )
+
+    portfolio = await client.get_holdings("7")
+
+    assert portfolio.status == "empty"
+    assert portfolio.daily_profit_loss_percent == 0
+    assert portfolio.holdings == []

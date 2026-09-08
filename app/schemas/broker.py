@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 
 class BrokerAccount(BaseModel):
@@ -40,3 +42,28 @@ class StockMetadata(BaseModel):
     name: str
     market: str
     currency: str
+
+
+class BrokerHolding(BaseModel):
+    symbol: str
+    name: str
+    market_country: Literal["KR", "US"]
+    currency: Literal["KRW", "USD"]
+    quantity: float
+    current_price: float
+    average_purchase_price: float
+    purchase_amount: float
+    market_value: float
+    profit_loss: float
+    profit_loss_percent: float
+    daily_profit_loss: float
+    daily_profit_loss_percent: float
+
+
+class BrokerPortfolio(BaseModel):
+    provider: str
+    status: Literal["ready", "empty", "no_account", "demo"]
+    account_seq: str | None = None
+    account_name: str | None = None
+    daily_profit_loss_percent: float | None = None
+    holdings: list[BrokerHolding] = Field(default_factory=list)

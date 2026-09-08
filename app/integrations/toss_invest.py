@@ -7,6 +7,8 @@ import httpx
 
 from app.schemas.broker import (
     BrokerAccount,
+    BrokerHolding,
+    BrokerPortfolio,
     MarketIndicatorQuote,
     MarketQuote,
     StockMetadata,
@@ -154,6 +156,43 @@ class TossInvestClient:
             if not isinstance(change, Exception):
                 quotes[symbol] = quotes[symbol].model_copy(update={"change_percent": change})
         return quotes
+
+    async def get_holdings(self, account_seq: str) -> BrokerPortfolio:
+        payload = await self._send(
+            "GET",
+            "/api/v1/holdings",
+            headers={"X-Tossinvest-Account": account_seq},
+        )
+        result = payload.get("result", {})
+        items = result.get("items", [])
+        holdings = [
+            BrokerHolding(
+                symbol=str(item["symbol"]).upper(),
+                name=str(item["name"]),
+                market_country=item["marketCountry"],
+                currency=item["currency"],
+                quantity=float(item["quantity"]),
+                current_price=float(item["lastPrice"]),
+                average_purchase_price=float(item["averagePurchasePrice"]),
+                purchase_amount=float(item["marketValue"]["purchaseAmount"]),
+                market_value=float(item["marketValue"]["amount"]),
+                profit_loss=float(item["profitLoss"]["amount"]),
+                profit_loss_percent=float(item["profitLoss"]["rate"]) * 100,
+                daily_profit_loss=float(item["dailyProfitLoss"]["amount"]),
+                daily_profit_loss_percent=float(item["dailyProfitLoss"]["rate"]) * 100,
+            )
+            for item in items
+        ]
+        daily_rate = result.get("dailyProfitLoss", {}).get("rate")
+        return BrokerPortfolio(
+            provider="toss",
+            status="ready" if holdings else "empty",
+            account_seq=account_seq,
+            daily_profit_loss_percent=(
+                round(float(daily_rate) * 100, 2) if daily_rate is not None else None
+            ),
+            holdings=holdings,
+        )
 
     async def get_stock(self, symbol: str) -> StockMetadata | None:
         payload = await self._send(

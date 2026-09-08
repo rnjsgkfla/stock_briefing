@@ -11,7 +11,11 @@ const newsDetailDialog = document.querySelector("#news-detail-dialog");
 const newsDetailContent = document.querySelector("#news-detail-content");
 const closeNewsDetailButton = document.querySelector("#close-news-detail");
 const briefDataLabel = document.querySelector("#brief-data-label");
+const portfolioSourceLabel = document.querySelector("#portfolio-source-label");
+const portfolioModeButton = document.querySelector("#portfolio-mode-button");
+const portfolioDescription = document.querySelector("#portfolio-description");
 let latestNewsItems = [];
+let demoPortfolio = false;
 
 const escapeHtml = (value) => {
   const element = document.createElement("div");
@@ -47,6 +51,13 @@ const formatList = (items) => {
 
 const importanceLabel = { high: "중요", medium: "보통", low: "낮음" };
 const marketProviderLabel = { toss: "TOSS", fred: "FRED", mock: "SAMPLE" };
+
+const formatHoldingPrice = (value, currency) => {
+  if (value === null || value === undefined) return "—";
+  return currency === "KRW"
+    ? `₩${Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 0 })}`
+    : `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
 
 const renderDashboard = (data) => {
   document.querySelector("#market-summary").textContent = data.summary;
@@ -88,6 +99,10 @@ const renderDashboard = (data) => {
   const portfolioImpact = document.querySelector("#portfolio-impact");
   portfolioImpact.textContent = formatPercent(data.expected_portfolio_impact_percent);
   portfolioImpact.className = directionClass(data.expected_portfolio_impact_percent);
+  portfolioSourceLabel.textContent = data.portfolio_source === "toss" ? "실제 계좌" : "데모";
+  portfolioDescription.textContent = data.portfolio_message;
+  portfolioModeButton.hidden = !data.portfolio_actual_available;
+  portfolioModeButton.textContent = data.portfolio_source === "demo" ? "실제 계좌 보기" : "데모 보기";
 
   const holdingRow = (holding) => `
         <div class="holding-row">
@@ -96,10 +111,19 @@ const renderDashboard = (data) => {
           </span>
           <div class="holding-name">
             <strong>${escapeHtml(holding.name)}</strong>
-            <span>${escapeHtml(holding.symbol)} · 비중 ${holding.weight_percent}%</span>
+            <span>${escapeHtml(holding.symbol)} · 그룹 비중 ${holding.weight_percent}%</span>
+            ${holding.current_price === null ? "" : `
+              <small>
+                현재 ${formatHoldingPrice(holding.current_price, holding.currency)} ·
+                평균 ${formatHoldingPrice(holding.average_purchase_price, holding.currency)} ·
+                ${Number(holding.quantity).toLocaleString()}주
+              </small>
+            `}
           </div>
           <span class="impact-pill ${escapeHtml(holding.importance)}">
-            ${escapeHtml(importanceLabel[holding.importance] ?? holding.importance)}
+            ${holding.profit_loss_percent === null
+              ? escapeHtml(importanceLabel[holding.importance] ?? holding.importance)
+              : `누적 ${formatPercent(holding.profit_loss_percent)}`}
           </span>
           <strong class="${directionClass(holding.change_percent)}">
             ${formatPercent(holding.change_percent)}
@@ -119,7 +143,11 @@ const renderDashboard = (data) => {
           <div class="holding-group-title">
             <strong>${group.label}</strong><span>${group.market}</span>
           </div>
-          <div class="holding-list">${holdings.map(holdingRow).join("")}</div>
+          <div class="holding-list">
+            ${holdings.length
+              ? holdings.map(holdingRow).join("")
+              : `<p class="empty-holdings">${data.portfolio_status === "empty" ? "보유 종목이 없습니다." : "표시할 종목이 없습니다."}</p>`}
+          </div>
         </section>
       `;
     })
@@ -153,11 +181,19 @@ const renderDashboard = (data) => {
 
 const loadDashboard = async () => {
   try {
-    renderDashboard(await fetchJson("/api/v1/dashboard"));
+    const query = demoPortfolio ? "?demo_portfolio=true" : "";
+    renderDashboard(await fetchJson(`/api/v1/dashboard${query}`));
   } catch (error) {
     document.querySelector("#market-summary").textContent = `브리핑을 불러오지 못했습니다. ${error.message}`;
   }
 };
+
+portfolioModeButton.addEventListener("click", async () => {
+  demoPortfolio = !demoPortfolio;
+  portfolioModeButton.disabled = true;
+  await loadDashboard();
+  portfolioModeButton.disabled = false;
+});
 
 const renderWatchlist = (items) => {
   if (!items.length) {

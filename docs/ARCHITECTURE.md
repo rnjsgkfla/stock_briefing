@@ -12,13 +12,14 @@ Browser
   ├─ GET /api/v1/dashboard  ──> MarketDataService (sample adapter)
   ├─ CRUD /api/v1/watchlist ──> Toss Invest stock info + prices ─> DB
   ├─ GET /api/v1/broker/accounts ─> Toss Invest OAuth ─> account sequence
+  ├─ GET /api/v1/broker/holdings ─> account header ─> KR·US holdings
   ├─ POST /api/v1/news/refresh ─> Alpha Vantage ─> deduplicate
   │                                      └───────> Trafilatura body extraction
   │                                                   ├─ success: extracted body
   │                                                   └─ failure: provider summary
   │                                                            └─> Gemini summary/category ─> DB
   ├─ GET /api/v1/news/latest ──> categorized overnight news
-  └─ GET /api/v1/dashboard ────> Toss prices/FX/KR indices
+  └─ GET /api/v1/dashboard ────> Toss account holdings/prices/FX/KR indices
                                  + FRED DGS10/US indices + stored news
 
 Celery Beat (07:10 KST) ──> Celery Worker ──> news collection
@@ -38,10 +39,13 @@ Celery Beat (07:30 KST) ──> Celery Worker ──> briefing pipeline (next ph
   응답과 비 HTML 콘텐츠를 차단한다.
 - 데모 사용자를 고정해 인증 없이 핵심 CRUD를 보여준다. 실제 배포 전에는 OAuth/JWT 경계를
   추가하고 모든 쿼리를 인증 사용자 ID로 제한해야 한다.
-- 포트폴리오 구성은 sample adapter를 사용한다. 관심 종목과 국내 지수 현재가는 Mock 또는
-  토스증권 Open API를 선택하며 액세스 토큰은 만료 직전까지 메모리에 캐시한다. 미국 지수는
-  FRED의 최근 거래일 종가를 사용한다. 뉴스는 Mock 또는 Alpha Vantage 수집기를 선택하고 URL
-  해시를 외부 ID로 사용해 중복 저장을 막는다.
+- Toss 모드에서는 설정 계좌 또는 첫 번째 계좌를 선택해 실제 보유 종목을 읽는다. 국내·미국
+  종목의 비중은 통화 혼합을 피하기 위해 각 시장 그룹 안에서 계산하고, 전체 일일 손익률은
+  토스증권의 원화 환산 요약값을 사용한다. 빈 계좌는 정상 상태로 유지하며 데모 화면은 사용자가
+  명시적으로 전환했을 때만 표시한다.
+- 관심 종목과 국내 지수 현재가는 Mock 또는 토스증권 Open API를 선택하며 액세스 토큰은 만료
+  직전까지 메모리에 캐시한다. 미국 지수는 FRED의 최근 거래일 종가를 사용한다. 뉴스는 Mock
+  또는 Alpha Vantage 수집기를 선택하고 URL 해시를 외부 ID로 사용해 중복 저장을 막는다.
 - 토스증권 연동은 조회 전용이다. Client Secret과 액세스 토큰을 DB에 저장하거나 Gemini
   프롬프트로 전달하지 않는다.
 

@@ -33,13 +33,13 @@
 | 뉴스 상세 | 한국어 요약, 관련 종목, 감성 정보, 원문 링크 | 저장된 뉴스 DB |
 | 시장 상태 | 미국장·국장 상태 표시 | 국장은 한국 시간 기준 계산, 미국장은 현재 정적 표시 |
 | 시장 지수 카드 | NASDAQ Composite·S&P 500 전일 종가, KOSPI·KOSDAQ 현재가 | FRED·토스증권 Open API |
-| 국장·미장 포트폴리오 | 시장별 보유 비중 및 영향도 UI | 현재 샘플 데이터 |
-| 계좌 연동 | 토스증권 계좌 식별자 목록 조회 | 토스증권 Open API |
+| 국장·미장 포트폴리오 | 실제 보유 종목, 현재가, 평균단가, 손익 및 시장별 비중 | 토스증권 Open API |
+| 계좌 연동 | 계좌 자동 선택, 보유 종목 조회, 빈 계좌·데모 전환 | 토스증권 Open API |
 | 배치 처리 | 07:10 뉴스 수집 동작, 07:30 브리핑 작업은 placeholder | Celery Beat·Redis |
 
-대시보드의 `sample_data` 값이 `true`인 이유는 포트폴리오 구성이 아직 샘플이기 때문입니다.
-실제 provider를 설정하면 관심 종목 가격, 국내외 시장 지수, 미국 10년물 금리, USD/KRW,
-뉴스와 오늘의 포커스는 외부 데이터를 사용합니다.
+실제 provider를 설정하면 관심 종목 가격, 포트폴리오, 국내외 시장 지수, 미국 10년물 금리,
+USD/KRW, 뉴스와 오늘의 포커스는 외부 데이터를 사용합니다. 보유 종목이 없는 계좌는 정상적인
+빈 상태로 표시하며, 화면의 `데모 보기` 버튼으로 샘플 국장·미장 포트폴리오를 확인할 수 있습니다.
 
 ## 기술 스택
 
@@ -59,7 +59,7 @@
 ```text
 Browser
   ├─ GET /api/v1/dashboard
-  │    ├─ Toss: 반도체 종목 현재가, USD/KRW, KOSPI·KOSDAQ
+  │    ├─ Toss: 계좌·보유 종목, 반도체 종목 현재가, USD/KRW, KOSPI·KOSDAQ
   │    ├─ FRED: 미국 10년물 국채 금리, NASDAQ Composite·S&P 500 종가
   │    └─ DB: 카테고리별 한국어 뉴스 근거
   ├─ CRUD /api/v1/watchlist
@@ -149,9 +149,9 @@ TOSS_INVEST_ACCOUNT=
 Secret과 허용 IP를 설정합니다.
 
 `TOSS_INVEST_ACCOUNT`는 토스증권 계좌 식별자인 `account_seq`를 넣는 자리입니다. 서버 실행
-후 `GET /api/v1/broker/accounts`에서 조회할 수 있습니다. 현재 관심 종목의 종목 정보·현재가·
-환율 조회에는 계좌 식별자가 필요하지 않으므로 비워두어도 됩니다. 향후 실제 보유 자산 조회
-기능에서 사용할 예정입니다.
+후 `GET /api/v1/broker/accounts`에서 조회할 수 있습니다. 비워두면 조회된 첫 번째 계좌를 자동
+선택합니다. 보유 자산 조회에는 선택한 계좌가 `X-Tossinvest-Account` 헤더로 전달됩니다.
+보유 종목이 없으면 오류가 아니라 연결된 빈 포트폴리오로 표시됩니다.
 
 ## API
 
@@ -163,6 +163,7 @@ Secret과 허용 IP를 설정합니다.
 | POST | `/api/v1/watchlist` | 종목 정보·현재가 확인 후 관심 종목 추가 |
 | DELETE | `/api/v1/watchlist/{symbol}` | 관심 종목 삭제 |
 | GET | `/api/v1/broker/accounts` | 토스증권 계좌 식별자 목록 조회 |
+| GET | `/api/v1/broker/holdings` | 선택 계좌의 실제 국내·미국 보유 종목과 손익 조회 |
 | GET | `/api/v1/news/latest` | 활성 provider의 최신 저장 뉴스 조회 |
 | POST | `/api/v1/news/refresh` | 실제 뉴스 수집, 중복 제거, 한국어 요약·분류 |
 | POST | `/api/v1/news/analyze` | 공개 뉴스 구조화 분석용 내부 API; 현재 UI에는 노출하지 않음 |

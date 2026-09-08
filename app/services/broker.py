@@ -5,7 +5,13 @@ from zoneinfo import ZoneInfo
 from app.core.config import get_settings
 from app.integrations.economic_data import EconomicMetric
 from app.integrations.toss_invest import TossInvestClient
-from app.schemas.broker import BrokerAccount, MarketIndicatorQuote, MarketQuote, StockMetadata
+from app.schemas.broker import (
+    BrokerAccount,
+    BrokerPortfolio,
+    MarketIndicatorQuote,
+    MarketQuote,
+    StockMetadata,
+)
 from app.services.market_data import STOCK_CATALOG, get_mock_quote
 
 
@@ -31,6 +37,25 @@ async def get_broker_accounts() -> list[BrokerAccount]:
     if settings.market_data_provider != "toss":
         return []
     return await get_toss_invest_client().get_accounts()
+
+
+async def get_broker_portfolio(account_seq: str | None = None) -> BrokerPortfolio:
+    settings = get_settings()
+    if settings.market_data_provider != "toss":
+        return BrokerPortfolio(provider="mock", status="demo")
+
+    client = get_toss_invest_client()
+    accounts = await client.get_accounts()
+    if not accounts:
+        return BrokerPortfolio(provider="toss", status="no_account")
+
+    selected_seq = account_seq or settings.toss_invest_account or accounts[0].account_seq
+    account = next((item for item in accounts if item.account_seq == selected_seq), None)
+    if account is None:
+        raise RuntimeError("설정한 토스증권 계좌를 계좌 목록에서 찾을 수 없습니다.")
+
+    portfolio = await client.get_holdings(account.account_seq)
+    return portfolio.model_copy(update={"account_name": account.name})
 
 
 async def get_market_quotes(symbols: list[str]) -> dict[str, MarketQuote]:

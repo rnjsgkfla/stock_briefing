@@ -17,5 +17,7 @@ async def test_dashboard_returns_market_snapshot() -> None:
     assert {market["symbol"] for market in body["markets"]} >= {"KOSPI", "KOSDAQ"}
     assert {session["market"] for session in body["market_sessions"]} == {"US", "KR"}
     assert body["holdings"][0]["symbol"] == "NVDA"
+    assert body["portfolio_source"] == "demo"
+    assert body["portfolio_status"] == "demo"
     assert {holding["market_group"] for holding in body["holdings"]} == {"US", "KR"}
     assert body["focus_items"][0]["evidence"]

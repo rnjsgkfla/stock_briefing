@@ -12,5 +12,8 @@ DatabaseSession = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 @router.get("", response_model=DashboardSnapshot)
-async def get_dashboard(session: DatabaseSession) -> DashboardSnapshot:
-    return await build_dashboard_snapshot(session)
+async def get_dashboard(
+    session: DatabaseSession,
+    demo_portfolio: bool = False,
+) -> DashboardSnapshot:
+    return await build_dashboard_snapshot(session, demo_portfolio=demo_portfolio)

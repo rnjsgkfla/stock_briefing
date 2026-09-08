@@ -6,9 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.db.models import NewsArticle
 from app.integrations.economic_data import EconomicMetric, get_cached_economic_metrics
-from app.schemas.broker import MarketQuote
-from app.schemas.dashboard import DashboardSnapshot, FocusItem, MarketIndicator
+from app.schemas.broker import BrokerHolding, BrokerPortfolio, MarketQuote
+from app.schemas.dashboard import DashboardSnapshot, FocusItem, HoldingImpact, MarketIndicator
 from app.services.broker import (
+    get_broker_portfolio,
     get_market_indicator_quotes,
     get_market_quotes,
     get_usd_krw_metric,
@@ -16,6 +17,7 @@ from app.services.broker import (
 from app.services.market_data import get_dashboard_snapshot
 
 SEMICONDUCTOR_SYMBOLS = ["NVDA", "AMD", "005930", "000660"]
+HOLDING_COLORS = ("blue", "purple", "slate")
 
 
 def _format_quote(quote: MarketQuote) -> str:
@@ -87,7 +89,42 @@ def _to_market_indicator(
     )
 
 
-async def build_dashboard_snapshot(session: AsyncSession) -> DashboardSnapshot:
+def _build_holding_impacts(holdings: list[BrokerHolding]) -> list[HoldingImpact]:
+    market_totals: dict[str, float] = {}
+    for holding in holdings:
+        market_totals[holding.market_country] = (
+            market_totals.get(holding.market_country, 0) + holding.market_value
+        )
+
+    impacts = []
+    for holding in holdings:
+        total = market_totals[holding.market_country]
+        weight = round(holding.market_value / total * 100, 1) if total else 0
+        importance = "high" if weight >= 30 else "medium" if weight >= 15 else "low"
+        color_index = sum(ord(character) for character in holding.symbol) % len(HOLDING_COLORS)
+        impacts.append(
+            HoldingImpact(
+                symbol=holding.symbol,
+                name=holding.name,
+                weight_percent=weight,
+                change_percent=round(holding.daily_profit_loss_percent, 2),
+                importance=importance,
+                color=HOLDING_COLORS[color_index],
+                market_group=holding.market_country,
+                currency=holding.currency,
+                quantity=holding.quantity,
+                current_price=holding.current_price,
+                average_purchase_price=holding.average_purchase_price,
+                profit_loss_percent=round(holding.profit_loss_percent, 2),
+            )
+        )
+    return impacts
+
+
+async def build_dashboard_snapshot(
+    session: AsyncSession,
+    demo_portfolio: bool = False,
+) -> DashboardSnapshot:
     snapshot = get_dashboard_snapshot()
     news = list(
         await session.scalars(
@@ -111,6 +148,9 @@ async def build_dashboard_snapshot(session: AsyncSession) -> DashboardSnapshot:
         else asyncio.sleep(0, result={}),
         get_usd_krw_metric(),
         get_market_indicator_quotes(["KOSPI", "KOSDAQ"]),
+        get_broker_portfolio()
+        if settings.market_data_provider == "toss" and not demo_portfolio
+        else asyncio.sleep(0, result=None),
         return_exceptions=True,
     )
     semiconductor_quotes = (
@@ -123,6 +163,9 @@ async def build_dashboard_snapshot(session: AsyncSession) -> DashboardSnapshot:
         external_results[2] if isinstance(external_results[2], EconomicMetric) else None
     )
     toss_indices = external_results[3] if isinstance(external_results[3], dict) else {}
+    portfolio = (
+        external_results[4] if isinstance(external_results[4], BrokerPortfolio) else None
+    )
     if toss_usdkrw:
         metrics["usdkrw"] = toss_usdkrw
 
@@ -247,10 +290,62 @@ async def build_dashboard_snapshot(session: AsyncSession) -> DashboardSnapshot:
             related_symbols=["USDKRW", "KOSPI", "KOSDAQ"],
         ),
     ]
+
+    portfolio_updates: dict[str, object]
+    if settings.market_data_provider != "toss" or demo_portfolio:
+        portfolio_updates = {
+            "sample_data": True,
+            "portfolio_source": "demo",
+            "portfolio_status": "demo",
+            "portfolio_account_name": None,
+            "portfolio_message": "기능 확인을 위한 데모 포트폴리오입니다.",
+            "portfolio_actual_available": settings.market_data_provider == "toss",
+        }
+    elif portfolio is None:
+        portfolio_updates = {
+            "sample_data": False,
+            "expected_portfolio_impact_percent": None,
+            "portfolio_source": "toss",
+            "portfolio_status": "unavailable",
+            "portfolio_account_name": None,
+            "portfolio_message": "토스증권 포트폴리오를 불러오지 못했습니다.",
+            "portfolio_actual_available": True,
+            "holdings": [],
+        }
+    elif portfolio.status == "no_account":
+        portfolio_updates = {
+            "sample_data": False,
+            "expected_portfolio_impact_percent": None,
+            "portfolio_source": "toss",
+            "portfolio_status": "no_account",
+            "portfolio_account_name": None,
+            "portfolio_message": "조회할 수 있는 토스증권 계좌가 없습니다.",
+            "portfolio_actual_available": True,
+            "holdings": [],
+        }
+    else:
+        is_empty = portfolio.status == "empty"
+        portfolio_updates = {
+            "sample_data": False,
+            "expected_portfolio_impact_percent": (
+                0 if is_empty else portfolio.daily_profit_loss_percent
+            ),
+            "portfolio_source": "toss",
+            "portfolio_status": portfolio.status,
+            "portfolio_account_name": portfolio.account_name,
+            "portfolio_message": (
+                "토스증권 계좌는 연결됐지만 현재 보유 종목이 없습니다."
+                if is_empty
+                else "토스증권의 실제 보유 종목과 일일 손익 기준입니다."
+            ),
+            "portfolio_actual_available": True,
+            "holdings": _build_holding_impacts(portfolio.holdings),
+        }
     return snapshot.model_copy(
         update={
             "summary": market_summary,
             "markets": markets,
             "focus_items": focus_items,
+            **portfolio_updates,
         }
     )
