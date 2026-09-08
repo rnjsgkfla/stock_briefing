@@ -21,7 +21,10 @@ def categorize_news(title: str, summary: str) -> str:
     return "기업"
 
 
-async def enrich_news_articles(articles: list[NewsArticle]) -> int:
+async def enrich_news_articles(
+    articles: list[NewsArticle],
+    article_contents: dict[str, str] | None = None,
+) -> int:
     if not articles:
         return 0
 
@@ -40,8 +43,14 @@ async def enrich_news_articles(articles: list[NewsArticle]) -> int:
         api_key=api_key.get_secret_value(),
         model=settings.gemini_model,
     )
+    contents = article_contents or {}
     inputs = [
-        {"index": str(index), "title": article.title, "summary": article.summary}
+        {
+            "index": index,
+            "title": article.title,
+            "content": contents.get(article.external_id, article.summary),
+            "content_source": article.content_source,
+        }
         for index, article in enumerate(articles)
     ]
     last_error: Exception | None = None

@@ -20,6 +20,7 @@ async def test_refresh_news_stores_and_deduplicates_articles() -> None:
         "collected_count": 3,
         "stored_count": 3,
         "duplicate_count": 0,
+        "extracted_count": 0,
         "summarized_count": 3,
     }
     assert second.status_code == 200
@@ -30,6 +31,8 @@ async def test_refresh_news_stores_and_deduplicates_articles() -> None:
     assert latest.json()[0]["provider"] == "mock"
     assert latest.json()[0]["korean_summary"]
     assert latest.json()[0]["category"]
+    assert latest.json()[0]["content_source"] == "provider_summary"
+    assert latest.json()[0]["extraction_status"] == "not_attempted"
 
 
 async def test_latest_news_validates_limit() -> None:

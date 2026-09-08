@@ -7,6 +7,7 @@ from app.db.models import NewsArticle, Stock, WatchlistItem
 from app.integrations.news_collector import AlphaVantageNewsCollector, MockNewsCollector
 from app.schemas.news_feed import NewsRefreshResult
 from app.services.news_enrichment import categorize_news, enrich_news_articles
+from app.services.news_extraction import extract_article_contents
 
 
 def get_news_collector():
@@ -81,8 +82,13 @@ async def refresh_news_feed(session: AsyncSession) -> NewsRefreshResult:
         .order_by(NewsArticle.published_at.desc())
         .limit(20)
     )
+    pending_articles = list(pending_result)
+    article_contents: dict[str, str] = {}
+    extracted_count = 0
+    if get_settings().ai_provider == "gemini":
+        article_contents, extracted_count = await extract_article_contents(pending_articles)
     try:
-        summarized_count = await enrich_news_articles(list(pending_result))
+        summarized_count = await enrich_news_articles(pending_articles, article_contents)
     except RuntimeError:
         summarized_count = 0
     await session.commit()
@@ -91,5 +97,6 @@ async def refresh_news_feed(session: AsyncSession) -> NewsRefreshResult:
         collected_count=len(collected),
         stored_count=len(new_items),
         duplicate_count=len(collected) - len(new_items),
+        extracted_count=extracted_count,
         summarized_count=summarized_count,
     )

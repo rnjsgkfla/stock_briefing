@@ -12,11 +12,13 @@
 1. 사용자가 국내 종목 코드 또는 미국 티커를 관심 종목에 추가합니다.
 2. 토스증권 Open API에서 종목 정보, 현재가, 전일 대비 등락률을 조회합니다.
 3. Alpha Vantage에서 관심 종목 및 거시경제 관련 뉴스를 수집하고 중복을 제거합니다.
-4. Gemini가 영문 기사를 한국어로 요약하고 금리·환율·반도체·실적·전쟁·지정학 등의
+4. 최신 중요 기사는 Trafilatura로 원문 본문을 추출하고, 실패하면 provider 요약으로
+   자동 대체합니다.
+5. Gemini가 추출 본문 또는 provider 요약을 한국어로 요약하고 금리·환율·반도체·실적·전쟁·지정학 등의
    카테고리로 분류합니다.
-5. 현재가, 미국 10년물 금리, 원·달러 환율과 관련 뉴스를 결합해 오늘 확인할 항목을
+6. 현재가, 미국 10년물 금리, 원·달러 환율과 관련 뉴스를 결합해 오늘 확인할 항목을
    수치와 근거 기사로 보여줍니다.
-6. 뉴스 카드를 누르면 한국어 요약과 관련 종목을 확인하고 원문 기사로 이동할 수 있습니다.
+7. 뉴스 카드를 누르면 한국어 요약과 관련 종목을 확인하고 원문 기사로 이동할 수 있습니다.
 
 ## 구현 상태
 
@@ -26,7 +28,8 @@
 | 관심 종목 현재가 | 종목 추가 전 유효성 및 가격 확인, 전일 대비 등락률 표시 | 토스증권 가격·일봉 API |
 | 오늘 확인할 3가지 | 반도체 평균 등락률, 미국 10년물, USD/KRW 수치와 관련 뉴스 근거 | 토스증권·FRED·저장 뉴스 |
 | 밤사이 주요 이슈 | 실제 기사 수집, URL 기반 중복 제거, 카테고리별 표시 | Alpha Vantage `NEWS_SENTIMENT` |
-| 뉴스 AI 처리 | 한국어 요약 및 카테고리 분류 | Gemini structured output |
+| 기사 본문 처리 | 최신 미요약 기사 최대 10건의 본문 추출, 실패 시 provider 요약 fallback | httpx·Trafilatura |
+| 뉴스 AI 처리 | 추출 본문 또는 provider 요약의 한국어 요약 및 카테고리 분류 | Gemini structured output |
 | 뉴스 상세 | 한국어 요약, 관련 종목, 감성 정보, 원문 링크 | 저장된 뉴스 DB |
 | 시장 상태 | 미국장·국장 상태 표시 | 국장은 한국 시간 기준 계산, 미국장은 현재 정적 표시 |
 | 시장 지수 카드 | NASDAQ, S&P 500, KOSPI, KOSDAQ | 현재 샘플 데이터 |
@@ -45,6 +48,7 @@
 - AI: Google Gemini
 - Market data: Toss Invest Open API, FRED `DGS10`
 - News: Alpha Vantage `NEWS_SENTIMENT`
+- Article extraction: httpx, Trafilatura
 - Batch: Celery, Redis, Celery Beat
 - Frontend: HTML, CSS, Vanilla JavaScript
 - Quality: pytest, Ruff, GitHub Actions
@@ -61,7 +65,10 @@ Browser
   ├─ CRUD /api/v1/watchlist
   │    └─ Toss: 종목 정보와 현재가 검증 → DB 저장
   └─ POST /api/v1/news/refresh
-       └─ Alpha Vantage → 중복 제거 → Gemini 요약·분류 → DB 저장
+       └─ Alpha Vantage → 중복 제거 → 중요 기사 본문 추출
+            ├─ 성공: 추출 본문 → Gemini 요약·분류
+            └─ 실패: provider 요약 → Gemini 요약·분류
+                                      └─ 추출 메타데이터·요약 DB 저장
 
 Celery Beat → Redis → Celery Worker
 ```
@@ -131,6 +138,11 @@ TOSS_INVEST_ACCOUNT=
 외부 API를 다시 호출하지 않습니다. provider 호출량을 아끼기 위해 URL 해시를 외부 ID로
 사용하고 중복 기사는 다시 저장하지 않습니다.
 
+새로 수집됐거나 아직 한국어 요약이 없는 기사 중 최신 10건은 원문 본문 추출을 시도합니다.
+본문을 가져올 수 없는 유료 기사, 차단 페이지, 비 HTML 응답과 추출 실패 기사는 Alpha Vantage가
+제공한 요약을 사용합니다. 원문 전체는 장기 저장하지 않고 `content_source`,
+`extraction_status`, `content_hash`, `extracted_at`만 DB에 기록합니다.
+
 ### 토스증권 Open API
 
 [토스증권 Open API 문서](https://developers.tossinvest.com/docs)를 참고해 Client ID, Client
@@ -178,6 +190,7 @@ curl -X POST http://127.0.0.1:8765/api/v1/news/refresh
 - `collected_count`: provider에서 이번 요청에 받은 기사 수
 - `stored_count`: 중복이 아니어서 새로 저장한 기사 수
 - `duplicate_count`: 이미 DB에 존재한 기사 수
+- `extracted_count`: Trafilatura로 원문 본문 추출에 성공한 기사 수
 - `summarized_count`: 이번 요청에서 Gemini 또는 Mock AI가 요약·분류한 기사 수
 
 ## 데이터베이스 마이그레이션
@@ -186,7 +199,8 @@ curl -X POST http://127.0.0.1:8765/api/v1/news/refresh
 alembic upgrade head
 ```
 
-현재 마이그레이션은 사용자·관심종목, 뉴스, 뉴스 한국어 요약·카테고리 스키마를 포함합니다.
+현재 마이그레이션은 사용자·관심종목, 뉴스, 한국어 요약·카테고리와 본문 추출 메타데이터
+스키마를 포함합니다.
 로컬 앱은 실행 편의를 위해 누락된 테이블을 자동 생성하지만, 배포 환경에서는 애플리케이션
 시작 전에 Alembic을 실행하는 구성이 필요합니다.
 
@@ -213,13 +227,15 @@ git diff --check
 테스트에서는 환경 변수를 Mock provider로 덮어쓰고 메모리 SQLite를 사용하므로 실제 API를
 호출하거나 로컬 `stock_briefing.db`를 변경하지 않습니다. 현재 테스트 범위에는 관심 종목
 CRUD, 토스 응답 매핑과 토큰 재사용, 뉴스 중복 제거, FRED·Alpha Vantage 응답 파싱,
-브리핑 기사 선택 로직이 포함됩니다.
+본문 추출·내부망 차단·fallback, 브리핑 기사 선택 로직이 포함됩니다.
 
 ## 보안 원칙
 
 - `.env`, Client Secret과 API 키를 커밋하지 않습니다.
 - 토스증권 액세스 토큰은 메모리에만 캐시하고 DB나 로그에 저장하지 않습니다.
 - Gemini 프롬프트에 증권사 인증정보나 개인 금융정보를 포함하지 않습니다.
+- 기사 추출기는 HTTP(S)만 허용하고 내부·사설 IP, 비표준 포트, 과도한 리다이렉트와 큰 응답을
+  차단합니다.
 - 현재 데모는 고정 사용자로 동작하므로 인터넷에 그대로 공개하지 않습니다.
 - 실제 배포 전 로그인, 사용자별 데이터 격리, 암호화된 비밀 저장소와 HTTPS가 필요합니다.
 
@@ -229,6 +245,9 @@ CRUD, 토스 응답 매핑과 토큰 재사용, 뉴스 중복 제거, FRED·Alph
 - 미국장 상태는 현재 정적 표시이며 휴장일·프리마켓·애프터마켓 계산이 필요합니다.
 - Alpha Vantage 기사만으로는 원화·국내시장 뉴스가 부족할 수 있어 국내 뉴스/RSS 공급자
   확장이 필요합니다.
+- JavaScript 렌더링 또는 유료 기사 본문은 추출하지 않으며 provider 요약으로 대체합니다.
+- 실제 운영 전 각 뉴스 제공처의 이용약관과 robots 정책을 확인하고 허용된 범위에서만 본문을
+  수집해야 합니다.
 - 오늘의 포커스는 수치와 관련 기사를 함께 보여주지만 기사를 가격 변화의 확정적 원인으로
   단정하지 않습니다.
 - 07:30 Celery 브리핑 작업은 아직 placeholder이며 브리핑 저장 이력도 구현되지 않았습니다.

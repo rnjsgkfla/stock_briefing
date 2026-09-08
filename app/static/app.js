@@ -191,6 +191,20 @@ const sentimentClass = (value) => {
   return "neutral";
 };
 
+const extractionStatusLabel = {
+  success: "본문 추출 성공",
+  not_attempted: "본문 추출 대상 아님",
+  http_error: "본문 접근 실패 · 제공 요약으로 대체",
+  dns_error: "도메인 확인 실패 · 제공 요약으로 대체",
+  blocked_address: "안전 정책으로 접근 차단",
+  unsupported_content: "HTML 기사가 아님 · 제공 요약으로 대체",
+  too_large: "본문 용량 초과 · 제공 요약으로 대체",
+  too_short: "추출 본문 부족 · 제공 요약으로 대체",
+  extraction_failed: "본문 분석 실패 · 제공 요약으로 대체",
+  extraction_error: "본문 처리 오류 · 제공 요약으로 대체",
+  too_many_redirects: "리다이렉트 초과 · 제공 요약으로 대체",
+};
+
 const renderNewsFeed = (items) => {
   latestNewsItems = items;
   if (!items.length) {
@@ -242,6 +256,8 @@ const renderNewsFeed = (items) => {
 };
 
 const openNewsDetail = (item) => {
+  const contentSourceLabel =
+    item.content_source === "extracted_body" ? "원문 본문 기반 AI 요약" : "뉴스 제공 요약 기반 AI 요약";
   newsDetailContent.innerHTML = `
     <div class="news-detail-meta">
       <span>${escapeHtml(item.source)}</span>
@@ -258,6 +274,7 @@ const openNewsDetail = (item) => {
     <div class="news-detail-section">
       <strong>제공 데이터</strong>
       <p>${escapeHtml(item.category)} · ${escapeHtml(item.sentiment ?? "감성 정보 없음")} · ${escapeHtml(item.provider)}</p>
+      <p>${escapeHtml(contentSourceLabel)} · ${escapeHtml(extractionStatusLabel[item.extraction_status] ?? item.extraction_status)}</p>
     </div>
     <a class="news-source-link" href="${escapeHtml(item.source_url)}" target="_blank" rel="noopener noreferrer">
       원문 기사 보기
@@ -341,10 +358,12 @@ refreshNewsButton.addEventListener("click", async () => {
     if (result.stored_count) {
       newsFeedMessage.textContent =
         `${result.provider} 실제 뉴스 ${result.collected_count}건 중 ` +
-        `${result.stored_count}건을 저장하고 ${result.summarized_count}건을 한국어로 요약했습니다.`;
+        `${result.stored_count}건을 저장하고, 본문 ${result.extracted_count}건을 추출해 ` +
+        `${result.summarized_count}건을 한국어로 요약했습니다.`;
     } else if (result.collected_count) {
       newsFeedMessage.textContent =
         `실제 뉴스 ${result.collected_count}건은 모두 저장되어 있으며 ` +
+        `본문 ${result.extracted_count}건을 추출해 ` +
         `${result.summarized_count}건을 추가로 한국어 요약했습니다.`;
     } else {
       newsFeedMessage.textContent =

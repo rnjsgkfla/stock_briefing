@@ -13,7 +13,10 @@ Browser
   ├─ CRUD /api/v1/watchlist ──> Toss Invest stock info + prices ─> DB
   ├─ GET /api/v1/broker/accounts ─> Toss Invest OAuth ─> account sequence
   ├─ POST /api/v1/news/refresh ─> Alpha Vantage ─> deduplicate
-  │                                      └───────> Gemini Korean summary/category ─> DB
+  │                                      └───────> Trafilatura body extraction
+  │                                                   ├─ success: extracted body
+  │                                                   └─ failure: provider summary
+  │                                                            └─> Gemini summary/category ─> DB
   ├─ GET /api/v1/news/latest ──> categorized overnight news
   └─ GET /api/v1/dashboard ────> Toss prices/FX + FRED DGS10 + stored news
 
@@ -28,6 +31,10 @@ Celery Beat (07:30 KST) ──> Celery Worker ──> briefing pipeline (next ph
 - 로컬 기본 DB는 별도 설치가 필요 없는 SQLite로 두고, Docker 환경에서는 PostgreSQL을 쓴다.
 - AI 제공자는 `mock`과 `gemini`를 동일한 응답 스키마로 감싸 키 없이도 테스트 가능하다.
 - 뉴스의 사실, 해석, 불확실성을 분리해 환각과 투자 조언 위험을 낮춘다.
+- 최신 미요약 기사 중 최대 10건만 동시에 3개씩 본문 추출한다. 원문은 저장하지 않고 추출
+  상태와 본문 해시만 남기며, 실패하면 뉴스 provider 요약을 사용한다.
+- 본문 URL은 HTTP(S)와 표준 포트만 허용하고 내부 IP, 3회를 넘는 리다이렉트, 1.5MB를 넘는
+  응답과 비 HTML 콘텐츠를 차단한다.
 - 데모 사용자를 고정해 인증 없이 핵심 CRUD를 보여준다. 실제 배포 전에는 OAuth/JWT 경계를
   추가하고 모든 쿼리를 인증 사용자 ID로 제한해야 한다.
 - 시장 요약은 sample adapter를 사용한다. 관심 종목 현재가는 Mock 또는 토스증권 Open API를

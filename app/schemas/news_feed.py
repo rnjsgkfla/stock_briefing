@@ -12,6 +12,9 @@ class NewsArticleResponse(BaseModel):
     summary: str
     korean_summary: str | None
     category: str
+    content_source: str
+    extraction_status: str
+    extracted_at: datetime | None
     source: str
     source_url: str
     published_at: datetime
@@ -25,4 +28,5 @@ class NewsRefreshResult(BaseModel):
     collected_count: int
     stored_count: int
     duplicate_count: int
+    extracted_count: int = 0
     summarized_count: int = 0
