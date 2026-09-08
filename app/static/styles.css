@@ -632,6 +632,12 @@ h1 {
   list-style: none;
 }
 
+.focus-method {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .focus-list li {
   display: grid;
   grid-template-columns: 30px 1fr;

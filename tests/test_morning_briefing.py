@@ -1,8 +1,15 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.db.models import NewsArticle
-from app.schemas.broker import BrokerHolding
-from app.services.morning_briefing import _build_holding_impacts, _news_reason
+from app.integrations.economic_data import EconomicMetric
+from app.schemas.broker import BrokerHolding, MarketQuote
+from app.schemas.dashboard import MarketIndicator
+from app.services.morning_briefing import (
+    _build_dynamic_focus_items,
+    _build_holding_impacts,
+    _news_reason,
+    _recent_focus_news,
+)
 
 
 def _article(title: str, summary: str, category: str = "금리") -> NewsArticle:
@@ -96,3 +103,66 @@ def test_holding_impacts_use_weight_within_each_market() -> None:
     assert impacts[1].weight_percent == 30
     assert impacts[0].current_price == 70000
     assert impacts[1].change_percent == -1
+
+
+def test_dynamic_focus_selects_strongest_market_and_news_signals() -> None:
+    news = [
+        _article(
+            f"지정학 뉴스 {index}",
+            "국제 분쟁과 제재가 금융시장 변동성을 높였습니다.",
+            category="전쟁·지정학",
+        )
+        for index in range(3)
+    ]
+    quotes = {
+        "NVDA": MarketQuote(
+            symbol="NVDA",
+            current_price=200,
+            currency="USD",
+            change_percent=0.2,
+        )
+    }
+    markets = [
+        MarketIndicator(
+            symbol="IXIC",
+            name="NASDAQ Composite",
+            value=20000,
+            display_value="20,000.00",
+            change_percent=0.4,
+            provider="fred",
+            as_of="2026-09-08",
+        ),
+        MarketIndicator(
+            symbol="KOSPI",
+            name="KOSPI",
+            value=3000,
+            display_value="3,000.00",
+            change_percent=-2.5,
+            provider="toss",
+            as_of="2026-09-09",
+        ),
+    ]
+    metrics = {
+        "treasury": EconomicMetric(value=4.001, previous_value=4, as_of="2026-09-08"),
+        "usdkrw": EconomicMetric(value=1351, previous_value=1350, as_of="2026-09-09"),
+    }
+
+    result = _build_dynamic_focus_items(news, quotes, metrics, markets)
+
+    assert len(result) == 3
+    assert result[0].title == "국내 증시 하락 흐름"
+    assert result[0].description == "KOSPI -2.50% · 3,000.00"
+    assert result[1].title == "전쟁·지정학 주요 이슈"
+    assert result[2].title == "미국 증시 상승 흐름"
+
+
+def test_recent_focus_news_uses_longer_monday_window() -> None:
+    monday = datetime(2026, 9, 7, 0, tzinfo=UTC)
+    weekend_article = _article("주말 뉴스", "주말 사이 발생한 주요 이슈입니다.")
+    weekend_article.published_at = monday - timedelta(hours=60)
+    stale_article = _article("오래된 뉴스", "지난주에 발생한 이슈입니다.")
+    stale_article.published_at = monday - timedelta(hours=80)
+
+    result = _recent_focus_news([weekend_article, stale_article], now=monday)
+
+    assert result == [weekend_article]

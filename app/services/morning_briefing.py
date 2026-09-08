@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,23 @@ def _format_quote(quote: MarketQuote) -> str:
         else f"${quote.current_price:,.2f}"
     )
     return f"{quote.symbol} {price} ({change_text})"
+
+
+def _recent_focus_news(
+    news: list[NewsArticle],
+    now: datetime | None = None,
+) -> list[NewsArticle]:
+    reference_time = now or datetime.now(UTC)
+    lookback_hours = 72 if reference_time.weekday() == 0 else 36
+    cutoff = reference_time - timedelta(hours=lookback_hours)
+    recent = []
+    for article in news:
+        published_at = article.published_at
+        if published_at.tzinfo is None:
+            published_at = published_at.replace(tzinfo=UTC)
+        if published_at >= cutoff:
+            recent.append(article)
+    return recent
 
 
 def _news_reason(
@@ -63,7 +81,7 @@ def _news_reason(
             else None
         )
     if article is None:
-        return "관련 실제 뉴스의 한국어 요약이 아직 없습니다."
+        return "선정 시간 범위 내 관련 뉴스가 없어 변동 원인을 단정할 수 없습니다."
     return f"{article.source}: {article.korean_summary}"
 
 
@@ -119,6 +137,183 @@ def _build_holding_impacts(holdings: list[BrokerHolding]) -> list[HoldingImpact]
             )
         )
     return impacts
+
+
+def _build_dynamic_focus_items(
+    news: list[NewsArticle],
+    semiconductor_quotes: dict[str, MarketQuote],
+    metrics: dict[str, EconomicMetric],
+    markets: list[MarketIndicator],
+) -> list[FocusItem]:
+    candidates: list[tuple[float, FocusItem]] = []
+    news_counts: dict[str, int] = {}
+    for article in news:
+        if article.korean_summary:
+            news_counts[article.category] = news_counts.get(article.category, 0) + 1
+
+    def news_boost(category: str) -> float:
+        return min(news_counts.get(category, 0), 3) * 0.15
+
+    quote_evidence = [_format_quote(quote) for quote in semiconductor_quotes.values()]
+    quote_changes = [
+        quote.change_percent
+        for quote in semiconductor_quotes.values()
+        if quote.change_percent is not None
+    ]
+    if quote_changes:
+        average_change = sum(quote_changes) / len(quote_changes)
+        direction = "강세" if average_change >= 0 else "약세"
+        candidates.append(
+            (
+                abs(average_change) + news_boost("반도체"),
+                FocusItem(
+                    title=f"반도체 업종 {direction} 지속 여부",
+                    description=(
+                        f"관련 {len(quote_changes)}종목 평균 {average_change:+.2f}%"
+                    ),
+                    detail_summary=_news_reason(
+                        news,
+                        "반도체",
+                        ("반도체", "semiconductor", "chip", "메모리", "dram", "nand"),
+                    ),
+                    evidence=quote_evidence,
+                    related_symbols=list(semiconductor_quotes),
+                ),
+            )
+        )
+
+    market_by_symbol = {item.symbol: item for item in markets}
+    for symbols, market_name, keywords in (
+        (("IXIC", "SPX"), "미국 증시", ("미국 증시", "나스닥", "s&p", "기술주")),
+        (("KOSPI", "KOSDAQ"), "국내 증시", ("국내 증시", "코스피", "코스닥", "외국인")),
+    ):
+        available = [
+            market_by_symbol[symbol]
+            for symbol in symbols
+            if symbol in market_by_symbol
+            and market_by_symbol[symbol].change_percent is not None
+        ]
+        if available:
+            leading = max(available, key=lambda item: abs(item.change_percent or 0))
+            direction = "상승" if (leading.change_percent or 0) >= 0 else "하락"
+            evidence = [
+                f"{item.name} {item.display_value} ({item.change_percent:+.2f}%), "
+                f"기준일 {item.as_of or '확인 불가'}"
+                for item in available
+                if item.change_percent is not None
+            ]
+            candidates.append(
+                (
+                    abs(leading.change_percent or 0),
+                    FocusItem(
+                        title=f"{market_name} {direction} 흐름",
+                        description=(
+                            f"{leading.name} {leading.change_percent:+.2f}% · "
+                            f"{leading.display_value}"
+                        ),
+                        detail_summary=_news_reason(
+                            news,
+                            "시장",
+                            fallback_keywords=keywords,
+                        ),
+                        evidence=evidence,
+                        related_symbols=list(symbols),
+                    ),
+                )
+            )
+
+    treasury = metrics.get("treasury")
+    if treasury:
+        change_bps = (treasury.value - treasury.previous_value) * 100
+        candidates.append(
+            (
+                abs(change_bps) / 5 + news_boost("금리"),
+                FocusItem(
+                    title="미국 장기 국채 금리",
+                    description=(
+                        f"미국 10년물 {treasury.value:.2f}% · 전일 대비 {change_bps:+.1f}bp"
+                    ),
+                    detail_summary=_news_reason(
+                        news,
+                        "금리",
+                        (
+                            f"국채 금리가 {_metric_direction(treasury)}",
+                            f"채권 금리가 {_metric_direction(treasury)}",
+                            "10년물",
+                            "treasury",
+                            "yield",
+                        ),
+                    ),
+                    evidence=[
+                        f"10년물 금리 {treasury.previous_value:.2f}% → "
+                        f"{treasury.value:.2f}% ({_metric_direction(treasury)}), "
+                        f"기준일 {treasury.as_of}"
+                    ],
+                    related_symbols=["US10Y", "IXIC"],
+                ),
+            )
+        )
+
+    usdkrw = metrics.get("usdkrw")
+    if usdkrw:
+        candidates.append(
+            (
+                abs(usdkrw.change_percent) + news_boost("환율"),
+                FocusItem(
+                    title="원·달러 환율",
+                    description=(
+                        f"USD/KRW {usdkrw.value:,.2f}원 · {usdkrw.change_percent:+.2f}%"
+                    ),
+                    detail_summary=_news_reason(
+                        news,
+                        "환율",
+                        fallback_keywords=("강달러", "약달러", "달러화", "원화", "환율"),
+                    ),
+                    evidence=[
+                        f"USD/KRW {usdkrw.previous_value:,.2f}원 → "
+                        f"{usdkrw.value:,.2f}원 ({_metric_direction(usdkrw)}), "
+                        f"기준일 {usdkrw.as_of}"
+                    ],
+                    related_symbols=["USDKRW", "KOSPI", "KOSDAQ"],
+                ),
+            )
+        )
+
+    for category, title in (
+        ("전쟁·지정학", "전쟁·지정학 주요 이슈"),
+        ("실적", "기업 실적 주요 이슈"),
+    ):
+        category_articles = [
+            article
+            for article in news
+            if article.category == category and article.korean_summary
+        ]
+        if category_articles:
+            related_symbols = list(
+                dict.fromkeys(
+                    symbol
+                    for article in category_articles
+                    for symbol in article.symbols
+                )
+            )[:6]
+            candidates.append(
+                (
+                    0.35 + min(len(category_articles), 3) * 0.2,
+                    FocusItem(
+                        title=title,
+                        description=f"관련 주요 뉴스 {len(category_articles)}건 확인",
+                        detail_summary=_news_reason(news, category),
+                        evidence=[
+                            f"{article.source}: {article.title}"
+                            for article in category_articles[:3]
+                        ],
+                        related_symbols=related_symbols,
+                    ),
+                )
+            )
+
+    candidates.sort(key=lambda candidate: candidate[0], reverse=True)
+    return [item for _, item in candidates[:3]]
 
 
 async def build_dashboard_snapshot(
@@ -205,91 +400,12 @@ async def build_dashboard_snapshot(
         else snapshot.summary
     )
 
-    quote_evidence = [_format_quote(quote) for quote in semiconductor_quotes.values()]
-    valid_changes = [
-        quote.change_percent
-        for quote in semiconductor_quotes.values()
-        if quote.change_percent is not None
-    ]
-    average_change = sum(valid_changes) / len(valid_changes) if valid_changes else None
-    semiconductor_description = (
-        f"관련 종목 평균 등락률 {average_change:+.2f}%"
-        if average_change is not None
-        else "관련 종목 등락률 확인 불가"
+    focus_items = _build_dynamic_focus_items(
+        _recent_focus_news(news),
+        semiconductor_quotes,
+        metrics,
+        markets,
     )
-
-    treasury = metrics.get("treasury")
-    treasury_direction = _metric_direction(treasury) if treasury else ""
-    treasury_change_bps = (treasury.value - treasury.previous_value) * 100 if treasury else None
-    treasury_description = (
-        f"미국 10년물 {treasury.value:.2f}% · 전일 대비 {treasury_change_bps:+.1f}bp"
-        if treasury
-        else "미국 10년물 금리 확인 불가"
-    )
-    usdkrw = metrics.get("usdkrw")
-    usdkrw_description = (
-        f"USD/KRW {usdkrw.value:,.2f}원 · {usdkrw.change_percent:+.2f}%"
-        if usdkrw
-        else "원·달러 환율 확인 불가"
-    )
-
-    focus_items = [
-        FocusItem(
-            title="반도체 업종 반등 지속 여부",
-            description=semiconductor_description,
-            detail_summary=_news_reason(
-                news,
-                "반도체",
-                ("반도체", "semiconductor", "chip", "메모리", "dram", "nand"),
-            ),
-            evidence=quote_evidence or ["토스증권 시세를 불러오지 못했습니다."],
-            related_symbols=list(semiconductor_quotes) or SEMICONDUCTOR_SYMBOLS,
-        ),
-        FocusItem(
-            title="미국 장기 국채 금리",
-            description=treasury_description,
-            detail_summary=_news_reason(
-                news,
-                "금리",
-                (
-                    f"국채 금리가 {treasury_direction}",
-                    f"채권 금리가 {treasury_direction}",
-                    "10년물",
-                    "treasury",
-                    "yield",
-                ),
-            ),
-            evidence=(
-                [
-                    f"10년물 금리 {treasury.previous_value:.2f}% → "
-                    f"{treasury.value:.2f}% ({_metric_direction(treasury)}), "
-                    f"기준일 {treasury.as_of}"
-                ]
-                if treasury
-                else ["경제지표 제공자에서 최신 금리를 받지 못했습니다."]
-            ),
-            related_symbols=["US10Y", "IXIC"],
-        ),
-        FocusItem(
-            title="원·달러 환율",
-            description=usdkrw_description,
-            detail_summary=_news_reason(
-                news,
-                "환율",
-                fallback_keywords=("강달러", "약달러", "달러화", "원화", "환율"),
-            ),
-            evidence=(
-                [
-                    f"USD/KRW {usdkrw.previous_value:,.2f}원 → "
-                    f"{usdkrw.value:,.2f}원 ({_metric_direction(usdkrw)}), "
-                    f"기준일 {usdkrw.as_of}"
-                ]
-                if usdkrw
-                else ["경제지표 제공자에서 최신 환율을 받지 못했습니다."]
-            ),
-            related_symbols=["USDKRW", "KOSPI", "KOSDAQ"],
-        ),
-    ]
 
     portfolio_updates: dict[str, object]
     if settings.market_data_provider != "toss" or demo_portfolio:
