@@ -70,6 +70,34 @@ async def test_toss_client_reuses_token_and_maps_accounts_and_prices() -> None:
                     }
                 },
             )
+        if request.url.path == "/api/v1/market-indicators/prices":
+            assert request.url.params["symbols"] == "KOSPI,KOSDAQ"
+            return httpx.Response(
+                200,
+                json={
+                    "result": [
+                        {"symbol": "KOSPI", "lastPrice": "6954.52", "timestamp": None},
+                        {"symbol": "KOSDAQ", "lastPrice": "811.88", "timestamp": None},
+                    ]
+                },
+            )
+        if request.url.path.startswith("/api/v1/market-indicators/"):
+            symbol = request.url.path.split("/")[-2]
+            previous_close = "6995.39" if symbol == "KOSPI" else "807.20"
+            return httpx.Response(
+                200,
+                json={
+                    "result": {
+                        "candles": [
+                            {
+                                "timestamp": "2026-09-08T00:00:00+09:00",
+                                "closePrice": "1",
+                            },
+                            {"closePrice": previous_close},
+                        ]
+                    }
+                },
+            )
         if request.url.path == "/api/v1/candles":
             previous_close = "70000" if request.url.params["symbol"] == "005930" else "200"
             return httpx.Response(
@@ -96,6 +124,7 @@ async def test_toss_client_reuses_token_and_maps_accounts_and_prices() -> None:
     quotes = await client.get_prices(["005930", "AAPL"])
     stock = await client.get_stock("NFLX")
     exchange_rate, exchange_rate_as_of = await client.get_exchange_rate()
+    market_indicators = await client.get_market_indicators(["KOSPI", "KOSDAQ"])
 
     assert token_requests == 1
     assert accounts[0].account_seq == "1234"
@@ -107,3 +136,6 @@ async def test_toss_client_reuses_token_and_maps_accounts_and_prices() -> None:
     assert stock.name == "Netflix"
     assert exchange_rate == 1352.6
     assert exchange_rate_as_of == "2026-09-07T01:09:58+09:00"
+    assert market_indicators["KOSPI"].current_value == 6954.52
+    assert market_indicators["KOSPI"].change_percent == -0.58
+    assert market_indicators["KOSDAQ"].change_percent == 0.58

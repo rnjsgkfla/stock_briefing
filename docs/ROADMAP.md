@@ -9,12 +9,12 @@
 - Mock/Gemini 교체형 공개 뉴스 구조화 분석
 - Mock/Alpha Vantage 뉴스 수집, URL 기반 중복 제거 및 최신 이슈 피드
 - 토스증권 OAuth 토큰 캐시, 계좌 목록 및 한국·미국 관심 종목 현재가 조회
+- 토스증권 KOSPI·KOSDAQ 시장지표와 FRED 미국 지수 종가 연동
 - Celery/Redis 아침 배치 기반, Alembic 마이그레이션, Docker Compose, CI
 - API 및 CRUD 자동 테스트
 
 ## 포트폴리오 2차 목표
 
-- KOSPI/KOSDAQ 종목 검색 및 관심 종목 지원
 - 시세 공급자 장애 시 최근 정상 가격 캐시 fallback
 - 관심 종목 관련성 점수와 Gemini 통합 요약 저장
 - 브리핑 생성 이력과 상세 페이지

@@ -57,3 +57,24 @@ async def test_fred_treasury_yield_uses_latest_non_empty_rows() -> None:
     assert metric.value == 4.77
     assert metric.previous_value == 4.79
     assert metric.as_of == "2026-09-03"
+
+
+async def test_fred_market_index_uses_requested_series() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        series_id = request.url.params["id"]
+        assert series_id == "NASDAQCOM"
+        return httpx.Response(
+            200,
+            text=(
+                "observation_date,NASDAQCOM\n"
+                "2026-09-03,26370.89\n"
+                "2026-09-04,26502.10\n"
+            ),
+        )
+
+    metric = await FredEconomicClient(
+        transport=httpx.MockTransport(handler)
+    ).get_nasdaq_composite()
+
+    assert metric.value == 26502.1
+    assert metric.change_percent == 0.5

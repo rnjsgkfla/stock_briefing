@@ -10,6 +10,7 @@ const refreshNewsButton = document.querySelector("#refresh-news-button");
 const newsDetailDialog = document.querySelector("#news-detail-dialog");
 const newsDetailContent = document.querySelector("#news-detail-content");
 const closeNewsDetailButton = document.querySelector("#close-news-detail");
+const briefDataLabel = document.querySelector("#brief-data-label");
 let latestNewsItems = [];
 
 const escapeHtml = (value) => {
@@ -45,9 +46,13 @@ const formatList = (items) => {
 };
 
 const importanceLabel = { high: "중요", medium: "보통", low: "낮음" };
+const marketProviderLabel = { toss: "TOSS", fred: "FRED", mock: "SAMPLE" };
 
 const renderDashboard = (data) => {
   document.querySelector("#market-summary").textContent = data.summary;
+  briefDataLabel.textContent = data.sample_data
+    ? "MORNING BRIEF · 일부 샘플 데이터"
+    : "MORNING BRIEF · 실제 시장 데이터";
 
   document.querySelector("#market-sessions").innerHTML = data.market_sessions
     .map(
@@ -66,8 +71,18 @@ const renderDashboard = (data) => {
     card.querySelector('[data-role="value"]').textContent = market.display_value;
     const change = card.querySelector('[data-role="change"]');
     change.textContent = formatPercent(market.change_percent);
-    change.classList.toggle("positive", market.change_percent >= 0);
-    change.classList.toggle("negative", market.change_percent < 0);
+    change.classList.toggle("positive", market.change_percent !== null && market.change_percent >= 0);
+    change.classList.toggle("negative", market.change_percent !== null && market.change_percent < 0);
+    let source = card.querySelector('[data-role="source"]');
+    if (!source) {
+      source = document.createElement("small");
+      source.dataset.role = "source";
+      source.className = "market-source";
+      card.querySelector('[data-role="value"]').insertAdjacentElement("afterend", source);
+    }
+    const asOf = market.as_of ? ` · ${escapeHtml(market.as_of.slice(0, 10))}` : "";
+    source.innerHTML = `${escapeHtml(marketProviderLabel[market.provider] ?? market.provider)}${asOf}`;
+    if (market.provider !== "mock") card.querySelector(".sparkline").hidden = true;
   });
 
   const portfolioImpact = document.querySelector("#portfolio-impact");

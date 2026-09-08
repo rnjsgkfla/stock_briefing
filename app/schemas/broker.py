@@ -19,6 +19,22 @@ class MarketQuote(BaseModel):
     change_percent: float | None = None
 
 
+class MarketIndicatorQuote(BaseModel):
+    symbol: str
+    current_value: float
+    previous_value: float | None = None
+    timestamp: str | None = None
+
+    @property
+    def change_percent(self) -> float | None:
+        if self.previous_value in {None, 0}:
+            return None
+        return round(
+            (self.current_value - self.previous_value) / self.previous_value * 100,
+            2,
+        )
+
+
 class StockMetadata(BaseModel):
     symbol: str
     name: str

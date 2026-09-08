@@ -87,27 +87,36 @@ class FredEconomicClient:
         self._transport = transport
 
     async def get_treasury_yield(self) -> EconomicMetric:
+        return await self._get_series("DGS10")
+
+    async def get_nasdaq_composite(self) -> EconomicMetric:
+        return await self._get_series("NASDAQCOM")
+
+    async def get_sp500(self) -> EconomicMetric:
+        return await self._get_series("SP500")
+
+    async def _get_series(self, series_id: str) -> EconomicMetric:
         start_date = (datetime.now(UTC) - timedelta(days=14)).date().isoformat()
         try:
             async with httpx.AsyncClient(timeout=15, transport=self._transport) as client:
                 response = await client.get(
                     "https://fred.stlouisfed.org/graph/fredgraph.csv",
-                    params={"id": "DGS10", "cosd": start_date},
+                    params={"id": series_id, "cosd": start_date},
                 )
                 response.raise_for_status()
         except httpx.HTTPError as exc:
-            raise RuntimeError("FRED 미국 10년물 금리 서버에 연결하지 못했습니다.") from exc
+            raise RuntimeError(f"FRED {series_id} 서버에 연결하지 못했습니다.") from exc
 
         rows = [
             row
             for row in csv.DictReader(StringIO(response.text))
-            if row.get("DGS10") not in {None, "."}
+            if row.get(series_id) not in {None, "."}
         ]
         if len(rows) < 2:
-            raise RuntimeError("FRED 미국 10년물 금리 최신값을 확인하지 못했습니다.")
+            raise RuntimeError(f"FRED {series_id} 최신값을 확인하지 못했습니다.")
         return EconomicMetric(
-            value=float(rows[-1]["DGS10"]),
-            previous_value=float(rows[-2]["DGS10"]),
+            value=float(rows[-1][series_id]),
+            previous_value=float(rows[-2][series_id]),
             as_of=rows[-1]["observation_date"],
         )
 
@@ -116,7 +125,7 @@ _metric_cache: tuple[float, dict[str, EconomicMetric]] | None = None
 _cache_lock = asyncio.Lock()
 
 
-async def get_cached_economic_metrics(api_key: str) -> dict[str, EconomicMetric]:
+async def get_cached_economic_metrics(api_key: str | None = None) -> dict[str, EconomicMetric]:
     global _metric_cache
     if _metric_cache and monotonic() - _metric_cache[0] < 21_600:
         return _metric_cache[1]
@@ -124,14 +133,26 @@ async def get_cached_economic_metrics(api_key: str) -> dict[str, EconomicMetric]
     async with _cache_lock:
         if _metric_cache and monotonic() - _metric_cache[0] < 21_600:
             return _metric_cache[1]
-        alpha_client = AlphaVantageEconomicClient(api_key)
-        try:
-            treasury = await FredEconomicClient().get_treasury_yield()
-        except RuntimeError:
+        fred_client = FredEconomicClient()
+        treasury, nasdaq, sp500 = await asyncio.gather(
+            fred_client.get_treasury_yield(),
+            fred_client.get_nasdaq_composite(),
+            fred_client.get_sp500(),
+            return_exceptions=True,
+        )
+        if isinstance(treasury, Exception) and api_key:
             try:
-                treasury = await alpha_client.get_treasury_yield()
+                treasury = await AlphaVantageEconomicClient(api_key).get_treasury_yield()
             except RuntimeError:
                 treasury = None
-        metrics = {"treasury": treasury} if treasury else {}
+
+        metrics = {}
+        for key, metric in (
+            ("treasury", treasury),
+            ("nasdaq", nasdaq),
+            ("sp500", sp500),
+        ):
+            if isinstance(metric, EconomicMetric):
+                metrics[key] = metric
         _metric_cache = (monotonic(), metrics)
         return metrics

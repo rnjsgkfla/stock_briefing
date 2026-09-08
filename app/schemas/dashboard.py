@@ -8,7 +8,9 @@ class MarketIndicator(BaseModel):
     name: str
     value: float
     display_value: str
-    change_percent: float
+    change_percent: float | None
+    provider: str = "mock"
+    as_of: str | None = None
 
 
 class MarketSession(BaseModel):

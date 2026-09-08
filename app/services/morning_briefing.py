@@ -1,3 +1,5 @@
+import asyncio
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -5,8 +7,12 @@ from app.core.config import get_settings
 from app.db.models import NewsArticle
 from app.integrations.economic_data import EconomicMetric, get_cached_economic_metrics
 from app.schemas.broker import MarketQuote
-from app.schemas.dashboard import DashboardSnapshot, FocusItem
-from app.services.broker import get_market_quotes, get_usd_krw_metric
+from app.schemas.dashboard import DashboardSnapshot, FocusItem, MarketIndicator
+from app.services.broker import (
+    get_market_indicator_quotes,
+    get_market_quotes,
+    get_usd_krw_metric,
+)
 from app.services.market_data import get_dashboard_snapshot
 
 SEMICONDUCTOR_SYMBOLS = ["NVDA", "AMD", "005930", "000660"]
@@ -64,6 +70,23 @@ def _metric_direction(metric: EconomicMetric) -> str:
     return direction
 
 
+def _to_market_indicator(
+    symbol: str,
+    name: str,
+    metric: EconomicMetric,
+    provider: str,
+) -> MarketIndicator:
+    return MarketIndicator(
+        symbol=symbol,
+        name=name,
+        value=metric.value,
+        display_value=f"{metric.value:,.2f}",
+        change_percent=metric.change_percent,
+        provider=provider,
+        as_of=metric.as_of,
+    )
+
+
 async def build_dashboard_snapshot(session: AsyncSession) -> DashboardSnapshot:
     snapshot = get_dashboard_snapshot()
     news = list(
@@ -75,23 +98,69 @@ async def build_dashboard_snapshot(session: AsyncSession) -> DashboardSnapshot:
         )
     )
 
-    try:
-        semiconductor_quotes = await get_market_quotes(SEMICONDUCTOR_SYMBOLS)
-    except (RuntimeError, ValueError):
-        semiconductor_quotes = {}
-
     settings = get_settings()
-    metrics: dict[str, EconomicMetric] = {}
-    if settings.news_provider == "alpha_vantage" and settings.alpha_vantage_api_key:
-        metrics = await get_cached_economic_metrics(
-            settings.alpha_vantage_api_key.get_secret_value()
-        )
-    try:
-        toss_usdkrw = await get_usd_krw_metric()
-    except RuntimeError:
-        toss_usdkrw = None
+    alpha_key = (
+        settings.alpha_vantage_api_key.get_secret_value()
+        if settings.alpha_vantage_api_key
+        else None
+    )
+    external_results = await asyncio.gather(
+        get_market_quotes(SEMICONDUCTOR_SYMBOLS),
+        get_cached_economic_metrics(alpha_key)
+        if settings.market_data_provider == "toss"
+        else asyncio.sleep(0, result={}),
+        get_usd_krw_metric(),
+        get_market_indicator_quotes(["KOSPI", "KOSDAQ"]),
+        return_exceptions=True,
+    )
+    semiconductor_quotes = (
+        external_results[0] if isinstance(external_results[0], dict) else {}
+    )
+    metrics: dict[str, EconomicMetric] = (
+        external_results[1] if isinstance(external_results[1], dict) else {}
+    )
+    toss_usdkrw = (
+        external_results[2] if isinstance(external_results[2], EconomicMetric) else None
+    )
+    toss_indices = external_results[3] if isinstance(external_results[3], dict) else {}
     if toss_usdkrw:
         metrics["usdkrw"] = toss_usdkrw
+
+    market_updates: dict[str, MarketIndicator] = {}
+    for key, symbol, name in (
+        ("nasdaq", "IXIC", "NASDAQ Composite"),
+        ("sp500", "SPX", "S&P 500"),
+        ("usdkrw", "USDKRW", "USD / KRW"),
+    ):
+        metric = metrics.get(key)
+        if metric:
+            market_updates[symbol] = _to_market_indicator(
+                symbol,
+                name,
+                metric,
+                "toss" if key == "usdkrw" else "fred",
+            )
+    for symbol, quote in toss_indices.items():
+        market_updates[symbol] = MarketIndicator(
+            symbol=symbol,
+            name=symbol,
+            value=quote.current_value,
+            display_value=f"{quote.current_value:,.2f}",
+            change_percent=quote.change_percent,
+            provider="toss",
+            as_of=quote.timestamp,
+        )
+    markets = [market_updates.get(item.symbol, item) for item in snapshot.markets]
+    actual_market_changes = [
+        f"{item.name} {item.change_percent:+.2f}%"
+        for item in markets
+        if item.provider != "mock" and item.change_percent is not None
+    ]
+    market_summary = (
+        " · ".join(actual_market_changes)
+        if actual_market_changes
+        else snapshot.summary
+    )
 
     quote_evidence = [_format_quote(quote) for quote in semiconductor_quotes.values()]
     valid_changes = [
@@ -178,4 +247,10 @@ async def build_dashboard_snapshot(session: AsyncSession) -> DashboardSnapshot:
             related_symbols=["USDKRW", "KOSPI", "KOSDAQ"],
         ),
     ]
-    return snapshot.model_copy(update={"focus_items": focus_items})
+    return snapshot.model_copy(
+        update={
+            "summary": market_summary,
+            "markets": markets,
+            "focus_items": focus_items,
+        }
+    )

@@ -5,7 +5,12 @@ from typing import Any
 
 import httpx
 
-from app.schemas.broker import BrokerAccount, MarketQuote, StockMetadata
+from app.schemas.broker import (
+    BrokerAccount,
+    MarketIndicatorQuote,
+    MarketQuote,
+    StockMetadata,
+)
 
 
 class TossInvestError(RuntimeError):
@@ -170,6 +175,42 @@ class TossInvestClient:
             currency=str(item.get("currency") or ("KRW" if symbol.isdigit() else "USD")),
         )
 
+    async def get_market_indicators(
+        self,
+        symbols: list[str],
+    ) -> dict[str, MarketIndicatorQuote]:
+        if not symbols:
+            return {}
+        payload = await self._send(
+            "GET",
+            "/api/v1/market-indicators/prices",
+            params={"symbols": ",".join(symbols)},
+        )
+        items = payload.get("result", [])
+        quotes = {
+            str(item["symbol"]).upper(): MarketIndicatorQuote(
+                symbol=str(item["symbol"]).upper(),
+                current_value=float(item["lastPrice"]),
+                timestamp=item.get("timestamp"),
+            )
+            for item in items
+        }
+        previous_values = await asyncio.gather(
+            *(self._get_market_indicator_previous(symbol) for symbol in quotes),
+            return_exceptions=True,
+        )
+        for symbol, result in zip(quotes, previous_values, strict=True):
+            if isinstance(result, Exception):
+                continue
+            previous_value, timestamp = result
+            quotes[symbol] = quotes[symbol].model_copy(
+                update={
+                    "previous_value": previous_value,
+                    "timestamp": quotes[symbol].timestamp or timestamp,
+                }
+            )
+        return quotes
+
     async def get_exchange_rate(self, date_time: str | None = None) -> tuple[float, str]:
         params = {"baseCurrency": "USD", "quoteCurrency": "KRW"}
         if date_time:
@@ -195,3 +236,14 @@ class TossInvestClient:
         if previous_close == 0:
             return None
         return round((current_price - previous_close) / previous_close * 100, 2)
+
+    async def _get_market_indicator_previous(self, symbol: str) -> tuple[float, str | None]:
+        payload = await self._send(
+            "GET",
+            f"/api/v1/market-indicators/{symbol}/candles",
+            params={"interval": "1d", "count": "2"},
+        )
+        candles = payload.get("result", {}).get("candles", [])
+        if len(candles) < 2:
+            raise TossInvestError(f"{symbol} 지수의 전일 종가가 없습니다.")
+        return float(candles[1]["closePrice"]), candles[0].get("timestamp")

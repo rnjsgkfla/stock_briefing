@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from app.core.config import get_settings
 from app.integrations.economic_data import EconomicMetric
 from app.integrations.toss_invest import TossInvestClient
-from app.schemas.broker import BrokerAccount, MarketQuote, StockMetadata
+from app.schemas.broker import BrokerAccount, MarketIndicatorQuote, MarketQuote, StockMetadata
 from app.services.market_data import STOCK_CATALOG, get_mock_quote
 
 
@@ -59,6 +59,15 @@ async def get_stock_metadata(symbol: str) -> StockMetadata | None:
     if metadata is None:
         return None
     return StockMetadata(symbol=symbol, **metadata)
+
+
+async def get_market_indicator_quotes(
+    symbols: list[str],
+) -> dict[str, MarketIndicatorQuote]:
+    settings = get_settings()
+    if settings.market_data_provider != "toss":
+        return {}
+    return await get_toss_invest_client().get_market_indicators(symbols)
 
 
 async def get_usd_krw_metric() -> EconomicMetric | None:
